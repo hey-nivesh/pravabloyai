@@ -1,9 +1,10 @@
 import { type ComponentProps } from 'react';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
-import { useRouter } from 'expo-router';
+import { useRouter, useNavigation } from 'expo-router';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { DrawerNavigationProp } from '@react-navigation/drawer';
 
 import { BentoGrid } from '@/components/home/BentoGrid';
 import { BentoTile } from '@/components/home/BentoTile';
@@ -98,6 +99,7 @@ const YOUR_TOOLS: ReadonlyArray<{
 
 export default function HomeScreen() {
   const router = useRouter();
+  const navigation = useNavigation<DrawerNavigationProp<any>>();
   const insets = useSafeAreaInsets();
   const userResult = useUser();
   const sessionResult = useRecentSession();
@@ -129,6 +131,7 @@ export default function HomeScreen() {
           <View style={styles.header}>
             {/* Hamburger / menu icon */}
             <Pressable
+              onPress={() => navigation.openDrawer()}
               style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
               accessibilityRole="button"
               accessibilityLabel="Open menu"
@@ -162,6 +165,7 @@ export default function HomeScreen() {
               )}
 
               <Pressable
+                onPress={() => router.push('/notifications' as never)}
                 style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
                 accessibilityRole="button"
                 accessibilityLabel="Notifications"

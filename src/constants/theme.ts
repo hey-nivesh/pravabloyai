@@ -26,6 +26,42 @@ export const Colors = {
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
+/** PravabloyAI brand palette — always light-theme tokens, not scheme-aware */
+export const Brand = {
+  /** Electric purple — primary CTAs, active icons, mic button */
+  primary: '#7F22FD',
+  /** Deep purple — headings, pressed states */
+  primaryDark: '#4C0E9E',
+  /** Soft purple used as hero-banner inner highlight */
+  primaryLight: '#A855F7',
+  /** Background gradient start (top) */
+  bgGradientStart: '#E8DCFC',
+  /** Background gradient end (bottom) */
+  bgGradientEnd: '#FFFFFF',
+  /** Streaks, success states, vocab badge */
+  accentGreen: '#10B981',
+  /** Light green tint for icon badge backgrounds */
+  accentGreenLight: '#D1FAE5',
+  /** Secondary text / subtitles */
+  grayText: '#6B7280',
+  /** Warm orange — flame / streak indicator */
+  accentOrange: '#F97316',
+  /** Light orange tint */
+  accentOrangeLight: '#FFEDD5',
+  /** Card/tile surfaces */
+  cardBg: '#FFFFFF',
+  /** Soft purple-tinted shadow color (for elevation effect) */
+  shadowColor: '#7F22FD',
+  /** Purple tint icon badge background */
+  primaryBadgeBg: '#EDE9FE',
+  /** Blue tint icon badge */
+  accentBlueBg: '#DBEAFE',
+  accentBlue: '#3B82F6',
+  /** Chart/progress icon badge */
+  accentAmberBg: '#FEF3C7',
+  accentAmber: '#F59E0B',
+} as const;
+
 export const Fonts = Platform.select({
   ios: {
     /** iOS `UIFontDescriptorSystemDesignDefault` */
@@ -59,6 +95,14 @@ export const Spacing = {
   four: 24,
   five: 32,
   six: 64,
+} as const;
+
+export const Radius = {
+  sm: 12,
+  md: 20,
+  lg: 24,
+  xl: 28,
+  xxl: 32,
 } as const;
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
