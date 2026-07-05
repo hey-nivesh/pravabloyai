@@ -28,7 +28,7 @@ function RootLayoutNav() {
       router.replace('/(auth)/login');
     } else if (session && inAuthGroup) {
       // Session exists but still on an auth screen → redirect into the app
-      router.replace('/(drawer)');
+      router.replace('/');
     }
   }, [session, isLoading, segments, router]);
 

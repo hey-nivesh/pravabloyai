@@ -1,4 +1,9 @@
 # Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+client_secret_429403262574-tj33j60qn4mbd6vsl47cnpu4agr2uql1.apps.googleusercontent.com.json
+
+client_secret_429403262574-9151q9802t6p4249v9452l4v7r72r64g.apps.googleusercontent.com.json
+
+client_secret_429403262574*
 .env
 # dependencies
 node_modules/

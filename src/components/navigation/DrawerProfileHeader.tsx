@@ -1,49 +1,82 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
 
 import { Brand, Radius, Spacing } from '@/constants/theme';
-import { UserProfile } from '@/hooks/use-user';
+import { Skeleton } from '@/components/home/Skeleton';
+import type { UserProfileRow } from '@/hooks/useUserProfile';
+
+// ─── Props ────────────────────────────────────────────────────────────────────
 
 type DrawerProfileHeaderProps = {
-  user: UserProfile | null;
+  /** The public.users profile row — null while loading */
+  profile: UserProfileRow | null;
+  /** Auth user email — used as fallback display */
+  email: string | null | undefined;
+  /** True while useUserProfile is still loading */
+  loading: boolean;
+  /** Called when the whole header is pressed */
   onPress: () => void;
 };
 
-export function DrawerProfileHeader({ user, onPress }: DrawerProfileHeaderProps) {
-  const name = user ? user.firstName : 'Learner';
-  const email = user ? user.email : 'learner@example.com';
-  
-  // Since UserProfile doesn't have a plan field, we stub it as "Free Plan".
-  // In a production environment, this would be read from user.tier or user.plan.
-  const isPro = false; 
+// ─── Component ────────────────────────────────────────────────────────────────
+
+export function DrawerProfileHeader({
+  profile,
+  email,
+  loading,
+  onPress,
+}: DrawerProfileHeaderProps) {
+  // ── Skeleton state ──────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <View style={styles.container}>
+        <Skeleton width={64} height={64} borderRadius={32} style={{ marginRight: Spacing.three }} />
+        <View style={styles.infoWrapper}>
+          <Skeleton width={120} height={17} borderRadius={Radius.sm} style={{ marginBottom: Spacing.half }} />
+          <Skeleton width={160} height={12} borderRadius={Radius.sm} style={{ marginBottom: Spacing.one }} />
+          <Skeleton width={72} height={20} borderRadius={Spacing.one + 2} />
+        </View>
+      </View>
+    );
+  }
+
+  // ── Derived display values ──────────────────────────────────────────────
+  const rawName = profile?.full_name ?? '';
+  const displayName = rawName
+    ? rawName.split(' ')[0]
+    : email?.split('@')[0] ?? 'Learner';
+
+  const displayEmail = email ?? 'learner@example.com';
+  const isPro = profile?.subscription_tier === 'pro';
   const planLabel = isPro ? 'Pro Member' : 'Free Plan';
 
+  const avatarSource = profile?.avatar_url
+    ? { uri: profile.avatar_url }
+    : require('@/assets/images/avatar.png');
+
+  // ── Render ─────────────────────────────────────────────────────────────
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.container, pressed && styles.pressed]}
       accessibilityRole="button"
-      accessibilityLabel={`View profile for ${name}. Current tier: ${planLabel}`}
+      accessibilityLabel={`View profile for ${displayName}. Current tier: ${planLabel}`}
     >
       <View style={styles.avatarWrapper}>
         <Image
-          source={
-            user?.avatarUrl
-              ? { uri: user.avatarUrl }
-              : require('@/assets/images/avatar.png')
-          }
+          source={avatarSource}
           style={styles.avatar}
           contentFit="cover"
         />
       </View>
+
       <View style={styles.infoWrapper}>
         <Text style={styles.name} numberOfLines={1}>
-          {name}
+          {displayName}
         </Text>
         <Text style={styles.email} numberOfLines={1}>
-          {email}
+          {displayEmail}
         </Text>
         <View style={[styles.badge, isPro ? styles.badgePro : styles.badgeFree]}>
           <Text style={[styles.badgeText, isPro ? styles.badgeTextPro : styles.badgeTextFree]}>
@@ -54,6 +87,8 @@ export function DrawerProfileHeader({ user, onPress }: DrawerProfileHeaderProps)
     </Pressable>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   container: {
@@ -79,12 +114,13 @@ const styles = StyleSheet.create({
     height: 64,
     borderRadius: 32,
     borderWidth: 2,
-    borderColor: Brand.primaryLight, // soft purple border
+    borderColor: Brand.primaryLight,
     padding: 2,
     backgroundColor: Brand.cardBg,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: Spacing.three,
+    overflow: 'hidden',
   },
   avatar: {
     width: '100%',

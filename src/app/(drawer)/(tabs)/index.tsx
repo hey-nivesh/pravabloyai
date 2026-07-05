@@ -13,7 +13,7 @@ import { RecentActivityCard, RecentActivityCardSkeleton } from '@/components/hom
 import { Skeleton } from '@/components/home/Skeleton';
 import { StreakBadge } from '@/components/home/StreakBadge';
 import { Brand, BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { useUser } from '@/hooks/use-user';
+import { useUserProfile, getFirstName } from '@/hooks/useUserProfile';
 import { useRecentSession } from '@/hooks/use-recent-session';
 
 type SymbolName = ComponentProps<typeof SymbolView>['name'];
@@ -101,12 +101,11 @@ export default function HomeScreen() {
   const router = useRouter();
   const navigation = useNavigation<DrawerNavigationProp<any>>();
   const insets = useSafeAreaInsets();
-  const userResult = useUser();
+  const { user, profile, loading: isUserLoading } = useUserProfile();
   const sessionResult = useRecentSession();
 
-  const isUserLoading = userResult.status === 'loading';
-  const firstName = userResult.status === 'authenticated' ? userResult.user.firstName : 'there';
-  const streakCount = userResult.status === 'authenticated' ? userResult.user.streakCount : 0;
+  const firstName = getFirstName(profile, user?.email) || 'there';
+  const streakCount = profile?.streak_count ?? 0;
 
   // Android handles its own top inset via system bars — apply it manually on Android only.
   const topPadding = Platform.OS === 'android' ? insets.top : insets.top + Spacing.two;

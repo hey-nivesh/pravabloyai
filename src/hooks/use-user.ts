@@ -1,6 +1,11 @@
 import { useMemo } from 'react';
 import { useAuth } from '@/context/auth-context';
 
+/**
+ * @deprecated Use `useUserProfile` from `@/hooks/useUserProfile` instead.
+ * This type derives data from the auth session's user_metadata only and does
+ * not fetch from the `public.users` database table.
+ */
 export type UserProfile = {
   id: string;
   firstName: string;

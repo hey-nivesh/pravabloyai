@@ -1,20 +1,138 @@
-import React from 'react';
-import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  Platform,
+  ActivityIndicator,
+  Alert,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
+import * as ImagePicker from 'expo-image-picker';
 
 import { Brand, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { useUser } from '@/hooks/use-user';
+import { Skeleton } from '@/components/home/Skeleton';
+import { useUserProfile, getFirstName, formatMemberSince } from '@/hooks/useUserProfile';
+import { uploadAvatarImage, CloudinaryUploadError } from '@/services/cloudinaryUpload';
+import { supabase } from '@/lib/supabase';
+
+// ─── Screen ───────────────────────────────────────────────────────────────────
 
 export default function ProfileScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const userResult = useUser();
-  const user = userResult.status === 'authenticated' ? userResult.user : null;
+  const { user, profile, loading, refetch } = useUserProfile();
+
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   const topPadding = Platform.OS === 'android' ? insets.top : insets.top + Spacing.two;
+
+  // ─── Derived display values ──────────────────────────────────────────────
+
+  const firstName = getFirstName(profile, user?.email);
+  const fullName = profile?.full_name ?? firstName;
+  const email = user?.email ?? '';
+  const streakCount = profile?.streak_count ?? 0;
+  const isPro = profile?.subscription_tier === 'pro';
+  const tierLabel = isPro ? 'Pro' : 'Free';
+  const memberSince = formatMemberSince(profile?.created_at);
+  const avatarSource = profile?.avatar_url
+    ? { uri: profile.avatar_url }
+    : require('@/assets/images/avatar.png');
+
+  // ─── Avatar upload flow ──────────────────────────────────────────────────
+
+  const handleAvatarPress = async () => {
+    if (uploading || !user) return;
+
+    // 1. Request media library permission
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert(
+        'Permission Required',
+        'Please allow access to your photo library in Settings to change your avatar.',
+        [{ text: 'OK' }],
+      );
+      return;
+    }
+
+    // 2. Open picker
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.85,
+    });
+
+    if (result.canceled || !result.assets?.[0]) return;
+
+    const pickedUri = result.assets[0].uri;
+
+    // 3. Upload to Cloudinary
+    setUploading(true);
+    setUploadError(null);
+
+    try {
+      const { secureUrl, publicId } = await uploadAvatarImage(pickedUri, user.id);
+
+      // 4. Persist the new URLs in public.users
+      const { error: dbError } = await supabase
+        .from('users')
+        .update({ avatar_url: secureUrl, avatar_public_id: publicId })
+        .eq('id', user.id);
+
+      if (dbError) {
+        throw new Error(`Failed to save avatar: ${dbError.message}`);
+      }
+
+      // 5. Trigger refetch so the realtime subscription and local state both update
+      await refetch();
+    } catch (err) {
+      let message = 'Something went wrong uploading your avatar. Please try again.';
+      if (err instanceof CloudinaryUploadError) {
+        message = err.message;
+      } else if (err instanceof Error) {
+        message = err.message;
+      }
+      setUploadError(message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  // ─── Loading skeleton ────────────────────────────────────────────────────
+
+  if (loading) {
+    return (
+      <View style={styles.root}>
+        <View style={[StyleSheet.absoluteFill, styles.gradientBg]} />
+        <View style={[styles.header, { paddingTop: topPadding }]}>
+          <View style={styles.backBtn} />
+          <Skeleton width={120} height={22} borderRadius={Radius.sm} />
+          <View style={{ width: 40 }} />
+        </View>
+        <View style={styles.content}>
+          <View style={styles.profileCard}>
+            <Skeleton width={106} height={106} borderRadius={53} style={{ marginBottom: Spacing.three }} />
+            <Skeleton width={160} height={24} borderRadius={Radius.sm} style={{ marginBottom: Spacing.half }} />
+            <Skeleton width={200} height={16} borderRadius={Radius.sm} style={{ marginBottom: Spacing.four }} />
+            <View style={styles.divider} />
+            <View style={styles.statRow}>
+              <Skeleton height={80} borderRadius={Radius.md} style={{ flex: 1 }} />
+              <Skeleton height={80} borderRadius={Radius.md} style={{ flex: 1 }} />
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // ─── Main render ─────────────────────────────────────────────────────────
 
   return (
     <View style={styles.root}>
@@ -41,58 +159,115 @@ export default function ProfileScreen() {
 
       <View style={styles.content}>
         <View style={styles.profileCard}>
-          <View style={styles.avatarContainer}>
-            <Image
-              source={
-                user?.avatarUrl
-                  ? { uri: user.avatarUrl }
-                  : require('@/assets/images/avatar.png')
-              }
-              style={styles.avatar}
-              contentFit="cover"
-            />
-          </View>
 
-          <Text style={styles.name}>{user?.firstName ?? 'Learner'}</Text>
-          <Text style={styles.email}>{user?.email ?? 'learner@example.com'}</Text>
+          {/* ── Avatar with upload badge ── */}
+          <Pressable
+            onPress={handleAvatarPress}
+            disabled={uploading}
+            accessibilityRole="button"
+            accessibilityLabel="Change profile photo"
+            style={styles.avatarWrapper}
+          >
+            <View style={styles.avatarContainer}>
+              {/* The avatar image, dimmed while uploading */}
+              <Image
+                source={avatarSource}
+                style={[styles.avatar, uploading && styles.avatarUploading]}
+                contentFit="cover"
+              />
+
+              {/* Spinner overlay during upload */}
+              {uploading && (
+                <View style={styles.uploadOverlay}>
+                  <ActivityIndicator size="small" color={Brand.primary} />
+                </View>
+              )}
+            </View>
+
+            {/* Camera badge — hidden while uploading */}
+            {!uploading && (
+              <View style={styles.cameraBadge} accessibilityElementsHidden>
+                <SymbolView
+                  name={{ ios: 'camera.fill', android: 'photo_camera', web: 'photo_camera' }}
+                  size={12}
+                  tintColor="#FFFFFF"
+                />
+              </View>
+            )}
+          </Pressable>
+
+          {/* Upload error */}
+          {uploadError ? (
+            <Text style={styles.uploadError} accessibilityRole="alert">
+              {uploadError}
+            </Text>
+          ) : null}
+
+          {/* Name */}
+          <Text style={styles.name}>{fullName}</Text>
+
+          {/* Email */}
+          <Text style={styles.email}>{email}</Text>
+
+          {/* Member since */}
+          {memberSince ? (
+            <Text style={styles.memberSince}>Member since {memberSince}</Text>
+          ) : null}
 
           <View style={styles.divider} />
 
+          {/* Stats row */}
           <View style={styles.statRow}>
+            {/* Streak tile */}
             <View style={styles.statTile}>
               <SymbolView
                 name={{ ios: 'flame.fill', android: 'local_fire_department', web: 'local_fire_department' }}
                 size={22}
                 tintColor={Brand.accentOrange}
               />
-              <Text style={styles.statNumber}>{user?.streakCount ?? 0}</Text>
+              <Text style={styles.statNumber}>{streakCount}</Text>
               <Text style={styles.statLabel}>Day Streak</Text>
             </View>
 
+            {/* Tier tile */}
             <View style={styles.statTile}>
               <SymbolView
-                name={{ ios: 'star.fill', android: 'star', web: 'star' }}
+                name={{ ios: isPro ? 'star.fill' : 'star', android: isPro ? 'grade' : 'star', web: isPro ? 'grade' : 'star' }}
                 size={22}
-                tintColor={Brand.primary}
+                tintColor={isPro ? Brand.primary : Brand.grayText}
               />
-              <Text style={styles.statNumber}>Free</Text>
+              <View style={[styles.tierBadge, isPro ? styles.tierBadgePro : styles.tierBadgeFree]}>
+                <Text style={[styles.tierBadgeText, isPro ? styles.tierBadgeTextPro : styles.tierBadgeTextFree]}>
+                  {tierLabel}
+                </Text>
+              </View>
               <Text style={styles.statLabel}>Current Plan</Text>
             </View>
           </View>
         </View>
 
-        <Pressable
-          onPress={() => router.navigate('/subscription')}
-          style={({ pressed }) => [styles.upgradeBtn, pressed && styles.upgradeBtnPressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Upgrade membership to Pro"
-        >
-          <Text style={styles.upgradeText}>Upgrade to Pro</Text>
-        </Pressable>
+        {/* Upgrade CTA (only shown on Free tier) */}
+        {!isPro && (
+          <Pressable
+            onPress={() => router.navigate('/subscription')}
+            style={({ pressed }) => [styles.upgradeBtn, pressed && styles.upgradeBtnPressed]}
+            accessibilityRole="button"
+            accessibilityLabel="Upgrade membership to Pro"
+          >
+            <SymbolView
+              name={{ ios: 'star.fill', android: 'grade', web: 'grade' }}
+              size={16}
+              tintColor="#FFFFFF"
+            />
+            <Text style={styles.upgradeText}>Upgrade to Pro</Text>
+          </Pressable>
+        )}
       </View>
     </View>
   );
 }
+
+// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   root: {
@@ -154,21 +329,67 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 6,
   },
+  // ── Avatar ────────────────────────────────────────────────────────────────
+  avatarWrapper: {
+    marginBottom: Spacing.three,
+    position: 'relative',
+  },
   avatarContainer: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
+    width: 106,
+    height: 106,
+    borderRadius: 53,
     borderWidth: 3,
     borderColor: Brand.primaryLight,
     padding: 3,
     backgroundColor: Brand.cardBg,
-    marginBottom: Spacing.three,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   avatar: {
     width: '100%',
     height: '100%',
-    borderRadius: 45,
+    borderRadius: 48,
   },
+  avatarUploading: {
+    opacity: 0.45,
+  },
+  uploadOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  cameraBadge: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: Brand.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: Brand.cardBg,
+    shadowColor: Brand.shadowColor,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  uploadError: {
+    fontSize: 12,
+    color: '#EF4444',
+    textAlign: 'center',
+    marginTop: -Spacing.two,
+    marginBottom: Spacing.two,
+    paddingHorizontal: Spacing.three,
+  },
+  // ── Text ─────────────────────────────────────────────────────────────────
   name: {
     fontSize: 22,
     fontWeight: '700',
@@ -178,14 +399,21 @@ const styles = StyleSheet.create({
   email: {
     fontSize: 14,
     color: Brand.grayText,
-    marginBottom: Spacing.four,
+  },
+  memberSince: {
+    fontSize: 12,
+    color: Brand.grayText,
+    marginTop: Spacing.half,
+    marginBottom: Spacing.three,
+    opacity: 0.7,
   },
   divider: {
     width: '100%',
     height: 1,
     backgroundColor: 'rgba(76, 14, 158, 0.08)',
-    marginBottom: Spacing.four,
+    marginVertical: Spacing.three,
   },
+  // ── Stats row ─────────────────────────────────────────────────────────────
   statRow: {
     flexDirection: 'row',
     gap: Spacing.four,
@@ -210,13 +438,37 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Brand.grayText,
   },
+  tierBadge: {
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 2,
+    borderRadius: Spacing.two,
+  },
+  tierBadgeFree: {
+    backgroundColor: Brand.accentGreenLight,
+  },
+  tierBadgePro: {
+    backgroundColor: Brand.primaryBadgeBg,
+  },
+  tierBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  tierBadgeTextFree: {
+    color: Brand.accentGreen,
+  },
+  tierBadgeTextPro: {
+    color: Brand.primary,
+  },
+  // ── Upgrade button ────────────────────────────────────────────────────────
   upgradeBtn: {
     width: '100%',
     height: 52,
     backgroundColor: Brand.primary,
     borderRadius: Radius.lg,
+    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    gap: Spacing.two,
     shadowColor: Brand.shadowColor,
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,

@@ -8,7 +8,7 @@ import { SymbolView } from 'expo-symbols';
 import Constants from 'expo-constants';
 
 import { Brand, Radius, Spacing } from '@/constants/theme';
-import { useUser } from '@/hooks/use-user';
+import { useUserProfile } from '@/hooks/useUserProfile';
 import { DrawerProfileHeader } from './DrawerProfileHeader';
 import { DrawerNavItem } from './DrawerNavItem';
 
@@ -18,8 +18,7 @@ export function DrawerContent(props: DrawerContentComponentProps) {
   const insets = useSafeAreaInsets();
   
   const { signOut } = useAuth();
-  const userResult = useUser();
-  const user = userResult.status === 'authenticated' ? userResult.user : null;
+  const { user, profile, loading } = useUserProfile();
 
   const appVersion = Constants.expoConfig?.version ?? '1.0.0';
 
@@ -68,9 +67,11 @@ export function DrawerContent(props: DrawerContentComponentProps) {
       >
         {/* Profile Header section - wrapped with safe area inset at the top */}
         <View style={{ paddingTop: insets.top }}>
-          <DrawerProfileHeader 
-            user={user} 
-            onPress={() => handleNavigate('/profile')} 
+          <DrawerProfileHeader
+            profile={profile}
+            email={user?.email}
+            loading={loading}
+            onPress={() => handleNavigate('/profile')}
           />
         </View>
 
