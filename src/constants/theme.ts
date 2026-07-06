@@ -103,6 +103,7 @@ export const Radius = {
   lg: 24,
   xl: 28,
   xxl: 32,
+  full: 9999,
 } as const;
 
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;

@@ -12,7 +12,7 @@ import {
   Animated as RNAnimated,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useRouter, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 import Animated, {
   useSharedValue,
@@ -53,6 +53,7 @@ export default function VoiceSessionScreen() {
   // Screen flow state: 1 = Ready, 2 = Live, 3 = Feedback
   const [screenState, setScreenState] = useState<1 | 2 | 3>(1);
   const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [isPreparing, setIsPreparing] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [minutesRemaining, setMinutesRemaining] = useState(15); // Stub entitlement
   const [showTranscript, setShowTranscript] = useState(true);
@@ -64,6 +65,7 @@ export default function VoiceSessionScreen() {
 
   // Audio Pronunciation sound reference
   const pronunciationSoundRef = useRef<AudioPlayer | null>(null);
+  const pronunciationReleasedRef = useRef(false); // double-release guard
 
   // Reanimated shared values
   const orbScale = useSharedValue(1);
@@ -74,6 +76,21 @@ export default function VoiceSessionScreen() {
   // Feedback stage values
   const fluencyProgress = useSharedValue(0);
   const wpmDialAnim = useSharedValue(0);
+
+  // Circular progress indicator styles (moved to top-level to avoid hook violation)
+  const animatedFluencyStyle = useAnimatedStyle(() => {
+    return {
+      opacity: fluencyProgress.value,
+      transform: [{ scale: interpolate(fluencyProgress.value, [0, 1], [0.8, 1]) }],
+    };
+  });
+
+  const animatedDialStyle = useAnimatedStyle(() => {
+    const rotation = interpolate(wpmDialAnim.value, [0, 1], [-90, 90]);
+    return {
+      transform: [{ rotate: `${rotation}deg` }],
+    };
+  });
 
   // Audio amplitude monitoring
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -162,26 +179,28 @@ export default function VoiceSessionScreen() {
   // Handle TTS / vocabulary word pronunciation
   const playWordPronunciation = async (word: string) => {
     try {
-      if (pronunciationSoundRef.current) {
-        pronunciationSoundRef.current.release();
+      // Release any existing player (guarded against double-release)
+      if (pronunciationSoundRef.current && !pronunciationReleasedRef.current) {
+        pronunciationReleasedRef.current = true;
+        try { pronunciationSoundRef.current.remove(); } catch {}
         pronunciationSoundRef.current = null;
       }
+      pronunciationReleasedRef.current = false;
       AccessibilityInfo.announceForAccessibility(`Pronouncing: ${word}`);
-      
-      // Simulate/Stub word pronunciation using a quick high pitched chime
-      // or real synthesis if connected to TTS. Here we mock it by playing an informative synth chime.
+
+      // Stub word pronunciation — plays a short chime (replace with real TTS URL from backend)
       const player = createAudioPlayer({ uri: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3' });
       pronunciationSoundRef.current = player;
+      pronunciationReleasedRef.current = false;
       player.play();
-      
-      // Stop the chime after 1.5 seconds so it behaves like a short pronunciation clip
+
+      // Stop the chime after 1.5 seconds
       setTimeout(() => {
-        try {
-          player.release();
-          if (pronunciationSoundRef.current === player) {
-            pronunciationSoundRef.current = null;
-          }
-        } catch {}
+        if (pronunciationSoundRef.current === player && !pronunciationReleasedRef.current) {
+          pronunciationReleasedRef.current = true;
+          try { player.remove(); } catch {}
+          pronunciationSoundRef.current = null;
+        }
       }, 1500);
 
     } catch (e) {
@@ -295,7 +314,7 @@ export default function VoiceSessionScreen() {
               tintColor="#FFFFFF"
             />
           </Animated.View>
-          <Text style={styles.orbStatusText}>Gemini Voice Agent Ready</Text>
+          <Text style={styles.orbStatusText}>Start Conversation</Text>
         </View>
 
         {/* Suggested RAG vocabulary pills */}
@@ -415,6 +434,28 @@ export default function VoiceSessionScreen() {
               ? 'Listening to you...'
               : 'Go ahead, speak!'}
           </Text>
+
+          {/* ── Live Pacing Indicator ─────────────────────────────────────── */}
+          {voice.livePacing && (
+            <View style={styles.pacingRow}>
+              <View
+                style={[
+                  styles.pacingDot,
+                  // Amber if fillers are spiking (≥3) or WPM is very fast (>180) or very slow (<60) or pause detected
+                  (voice.livePacing.fillerCount >= 3 ||
+                    voice.livePacing.wpm > 180 ||
+                    (voice.livePacing.wpm > 0 && voice.livePacing.wpm < 60) ||
+                    voice.livePacing.pauseFlag)
+                    ? styles.pacingDotAmber
+                    : styles.pacingDotGreen,
+                ]}
+              />
+              <Text style={styles.pacingLabel}>
+                {voice.livePacing.wpm > 0 ? `${voice.livePacing.wpm} wpm` : 'Pacing'}
+                {voice.livePacing.fillerCount > 0 ? ` · ${voice.livePacing.fillerCount} fillers` : ''}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Live Subtitle Transcript strip */}
@@ -574,22 +615,6 @@ export default function VoiceSessionScreen() {
         audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
       }
     ];
-
-    // Circular progress indicator styles
-    const animatedFluencyStyle = useAnimatedStyle(() => {
-      return {
-        opacity: fluencyProgress.value,
-        transform: [{ scale: interpolate(fluencyProgress.value, [0, 1], [0.8, 1]) }],
-      };
-    });
-
-    const animatedDialStyle = useAnimatedStyle(() => {
-      const rotation = interpolate(wpmDialAnim.value, [0, 1], [-90, 90]);
-      return {
-        transform: [{ rotate: `${rotation}deg` }],
-      };
-    });
-
     return (
       <ScrollView
         style={styles.feedbackScroll}
@@ -1654,5 +1679,42 @@ const styles = StyleSheet.create({
     color: Brand.primary,
     fontWeight: '700',
     fontSize: 14,
+  },
+  // ── Live Pacing Indicator ─────────────────────────────────────────
+  pacingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: 5,
+    borderRadius: Radius.full,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    alignSelf: 'center',
+  },
+  pacingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  pacingDotGreen: {
+    backgroundColor: '#22C55E',
+    shadowColor: '#22C55E',
+    shadowOpacity: 0.7,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  pacingDotAmber: {
+    backgroundColor: '#F59E0B',
+    shadowColor: '#F59E0B',
+    shadowOpacity: 0.7,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  pacingLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: 'rgba(255,255,255,0.85)',
+    letterSpacing: 0.3,
   },
 });

@@ -25,6 +25,12 @@ export type UserProfileRow = {
   subscription_tier: 'free' | 'pro' | string;
   streak_count: number;
   created_at: string; // ISO timestamp — shown as "Member since …"
+  /**
+   * BCP-47 language tag for vocab explanation language.
+   * Defaults to 'en'. Set via Profile screen or onboarding.
+   * SQL: ALTER TABLE public.users ADD COLUMN IF NOT EXISTS preferred_explanation_language text NOT NULL DEFAULT 'en';
+   */
+  preferred_explanation_language: string;
 };
 
 // ─── Return type ───────────────────────────────────────────────────────────────
@@ -57,7 +63,7 @@ export function useUserProfile(): UseUserProfileResult {
     const { data, error } = await supabase
       .from('users')
       .select(
-        'id, full_name, avatar_url, avatar_public_id, subscription_tier, streak_count, created_at',
+        'id, full_name, avatar_url, avatar_public_id, subscription_tier, streak_count, created_at, preferred_explanation_language',
       )
       .eq('id', uid)
       .single();
