@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { type ReactNode, useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
@@ -11,6 +11,10 @@ type BentoGridProps = {
   seeAllHref: string;
   /** BentoTile children arranged in a 3-column flex row */
   children: ReactNode;
+  /** Keep 3 items visible until "See all" is pressed */
+  collapsedCount?: number;
+  /** Expand inline instead of route navigation */
+  expandInline?: boolean;
 };
 
 /**
@@ -19,12 +23,24 @@ type BentoGridProps = {
  * Renders a row header (title + "See all" link) above a 3-column horizontal
  * tile row. Pass BentoTile children directly.
  */
-export function BentoGrid({ title, seeAllHref, children }: BentoGridProps) {
+export function BentoGrid({
+  title,
+  seeAllHref,
+  children,
+  collapsedCount = 3,
+  expandInline = true,
+}: BentoGridProps) {
   const router = useRouter();
+  const [expanded, setExpanded] = useState(false);
+  const childArray = useMemo(() => (Array.isArray(children) ? children : [children]), [children]);
+  const hasOverflow = childArray.length > collapsedCount;
+  const visibleChildren = expandInline && !expanded ? childArray.slice(0, collapsedCount) : childArray;
 
   function handleSeeAll() {
-    // Routes such as /practice may not exist yet — cast to any to bypass
-    // expo-router typed-routes check until those screens are created.
+    if (expandInline && hasOverflow) {
+      setExpanded((prev) => !prev);
+      return;
+    }
     router.push(seeAllHref as never);
   }
 
@@ -37,14 +53,16 @@ export function BentoGrid({ title, seeAllHref, children }: BentoGridProps) {
           onPress={handleSeeAll}
           hitSlop={8}
           accessibilityRole="link"
-          accessibilityLabel={`See all ${title}`}
+          accessibilityLabel={`${expanded ? 'Show less' : 'See all'} ${title}`}
         >
-          <Text style={styles.seeAll}>See all</Text>
+          <Text style={styles.seeAll}>
+            {expandInline && hasOverflow ? (expanded ? 'Show less' : 'See all') : 'See all'}
+          </Text>
         </Pressable>
       </View>
 
       {/* 3-column tile row */}
-      <View style={styles.grid}>{children}</View>
+      <View style={styles.grid}>{visibleChildren}</View>
     </View>
   );
 }
@@ -52,7 +70,7 @@ export function BentoGrid({ title, seeAllHref, children }: BentoGridProps) {
 const styles = StyleSheet.create({
   section: {
     paddingHorizontal: Spacing.three,
-    gap: Spacing.two + 2,
+    gap: Spacing.two,
   },
   header: {
     flexDirection: 'row',
@@ -72,6 +90,9 @@ const styles = StyleSheet.create({
   },
   grid: {
     flexDirection: 'row',
-    gap: Spacing.two + 2,
+    flexWrap: 'wrap',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+    rowGap: Spacing.two + 2,
   },
 });

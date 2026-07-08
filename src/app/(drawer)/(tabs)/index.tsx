@@ -12,7 +12,9 @@ import { HeroBanner } from '@/components/home/HeroBanner';
 import { RecentActivityCard, RecentActivityCardSkeleton } from '@/components/home/RecentActivityCard';
 import { Skeleton } from '@/components/home/Skeleton';
 import { StreakBadge } from '@/components/home/StreakBadge';
+import { WeeklyProgressStrip } from '@/components/home/WeeklyProgressStrip';
 import { Brand, BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { useProgressSummary } from '@/hooks/useProgressSummary';
 import { useUserProfile, getFirstName } from '@/hooks/useUserProfile';
 import { useRecentSession } from '@/hooks/use-recent-session';
 
@@ -71,15 +73,15 @@ const YOUR_TOOLS: ReadonlyArray<{
 }> = [
   {
     id: 'vocab',
-    label: 'Vocab\nVault',
+    label: 'Vocab Vault',
     icon: { ios: 'books.vertical.fill', android: 'book', web: 'book' },
     iconBgColor: Brand.accentGreenLight,
     iconColor: Brand.accentGreen,
     href: '/vocab',
   },
   {
-    id: 'progress',
-    label: 'Progress',
+    id: 'progress Report',
+    label: 'Progress Report',
     icon: { ios: 'chart.line.uptrend.xyaxis', android: 'trending_up', web: 'trending_up' },
     iconBgColor: Brand.primaryBadgeBg,
     iconColor: Brand.primary,
@@ -87,11 +89,35 @@ const YOUR_TOOLS: ReadonlyArray<{
   },
   {
     id: 'analytics',
-    label: 'Analytics\nReport',
+    label: 'Analytics Report',
     icon: { ios: 'doc.text.magnifyingglass', android: 'analytics', web: 'analytics' },
     iconBgColor: Brand.accentAmberBg,
     iconColor: Brand.accentAmber,
     href: '/analytics',
+  },
+  {
+    id: 'history',
+    label: 'History',
+    icon: { ios: 'clock.arrow.circlepath', android: 'history', web: 'history' },
+    iconBgColor: Brand.accentBlueBg,
+    iconColor: Brand.accentBlue,
+    href: '/history',
+  },
+  {
+    id: 'practice',
+    label: 'Practice',
+    icon: { ios: 'waveform', android: 'graphic_eq', web: 'graphic_eq' },
+    iconBgColor: Brand.primaryBadgeBg,
+    iconColor: Brand.primary,
+    href: '/practice',
+  },
+  {
+    id: 'help',
+    label: 'Help Center',
+    icon: { ios: 'questionmark.circle', android: 'help', web: 'help' },
+    iconBgColor: Brand.accentGreenLight,
+    iconColor: Brand.accentGreen,
+    href: '/help',
   },
 ];
 
@@ -103,6 +129,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const { user, profile, loading: isUserLoading } = useUserProfile();
   const sessionResult = useRecentSession();
+  const { loading: progressLoading, summary: progressSummary, error: progressError } = useProgressSummary();
 
   const firstName = getFirstName(profile, user?.email) || 'there';
   const streakCount = profile?.streak_count ?? 0;
@@ -186,8 +213,14 @@ export default function HomeScreen() {
             />
           )}
 
+          <WeeklyProgressStrip
+            loading={progressLoading}
+            summary={progressSummary}
+            error={progressError}
+          />
+
           {/* ── 3. Practice Modes bento grid ────────────────────────────── */}
-          <BentoGrid title="Practice Modes" seeAllHref="/practice">
+          <BentoGrid title="Practice Modes" seeAllHref="/practice" expandInline={false}>
             {PRACTICE_MODES.map((mode) => (
               <BentoTile
                 key={mode.id}
@@ -202,7 +235,7 @@ export default function HomeScreen() {
           </BentoGrid>
 
           {/* ── 4. Your Tools bento grid ────────────────────────────────── */}
-          <BentoGrid title="Your Tools" seeAllHref="/tools">
+          <BentoGrid title="Your Tools" seeAllHref="/tools" collapsedCount={3} expandInline>
             {YOUR_TOOLS.map((tool) => (
               <BentoTile
                 key={tool.id}

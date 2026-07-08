@@ -32,31 +32,31 @@ const PRACTICE_MODES: ReadonlyArray<{
   iconColor: string;
   href: string;
 }> = [
-  {
-    id: 'casual',
-    label: 'Casual\nChats',
-    icon: { ios: 'bubble.left.and.bubble.right.fill', android: 'chat_bubble', web: 'chat' },
-    iconBgColor: Brand.accentBlueBg,
-    iconColor: Brand.accentBlue,
-    href: '/practice?category=casual',
-  },
-  {
-    id: 'executive',
-    label: 'Executive\nMeetings',
-    icon: { ios: 'briefcase.fill', android: 'work', web: 'work' },
-    iconBgColor: Brand.primaryBadgeBg,
-    iconColor: Brand.primary,
-    href: '/practice?category=executive',
-  },
-  {
-    id: 'interview',
-    label: 'Mock\nInterviews',
-    icon: { ios: 'person.crop.rectangle.fill', android: 'badge', web: 'badge' },
-    iconBgColor: Brand.accentAmberBg,
-    iconColor: Brand.accentAmber,
-    href: '/practice?category=interview',
-  },
-];
+    {
+      id: 'casual',
+      label: 'Casual\nChats',
+      icon: { ios: 'bubble.left.and.bubble.right.fill', android: 'chat_bubble', web: 'chat' },
+      iconBgColor: Brand.accentBlueBg,
+      iconColor: Brand.accentBlue,
+      href: '/practice?category=casual',
+    },
+    {
+      id: 'executive',
+      label: 'Executive\nMeetings',
+      icon: { ios: 'briefcase.fill', android: 'work', web: 'work' },
+      iconBgColor: Brand.primaryBadgeBg,
+      iconColor: Brand.primary,
+      href: '/practice?category=executive',
+    },
+    {
+      id: 'interview',
+      label: 'Mock\nInterviews',
+      icon: { ios: 'person.crop.rectangle.fill', android: 'badge', web: 'badge' },
+      iconBgColor: Brand.accentAmberBg,
+      iconColor: Brand.accentAmber,
+      href: '/practice?category=interview',
+    },
+  ];
 
 // ─── Your Tools data ─────────────────────────────────────────────────────────
 
@@ -68,31 +68,31 @@ const YOUR_TOOLS: ReadonlyArray<{
   iconColor: string;
   href: string;
 }> = [
-  {
-    id: 'vocab',
-    label: 'Vocab\nVault',
-    icon: { ios: 'books.vertical.fill', android: 'book', web: 'book' },
-    iconBgColor: Brand.accentGreenLight,
-    iconColor: Brand.accentGreen,
-    href: '/vocab',
-  },
-  {
-    id: 'progress',
-    label: 'Progress',
-    icon: { ios: 'chart.line.uptrend.xyaxis', android: 'trending_up', web: 'trending_up' },
-    iconBgColor: Brand.primaryBadgeBg,
-    iconColor: Brand.primary,
-    href: '/progress',
-  },
-  {
-    id: 'analytics',
-    label: 'Analytics\nReport',
-    icon: { ios: 'doc.text.magnifyingglass', android: 'analytics', web: 'analytics' },
-    iconBgColor: Brand.accentAmberBg,
-    iconColor: Brand.accentAmber,
-    href: '/analytics',
-  },
-];
+    {
+      id: 'vocab',
+      label: 'Vocab\nVault',
+      icon: { ios: 'books.vertical.fill', android: 'book', web: 'book' },
+      iconBgColor: Brand.accentGreenLight,
+      iconColor: Brand.accentGreen,
+      href: '/vocab',
+    },
+    {
+      id: 'progress',
+      label: 'Progress\nReport',
+      icon: { ios: 'chart.line.uptrend.xyaxis', android: 'trending_up', web: 'trending_up' },
+      iconBgColor: Brand.primaryBadgeBg,
+      iconColor: Brand.primary,
+      href: '/progress',
+    },
+    {
+      id: 'analytics',
+      label: 'Analytics\nReport',
+      icon: { ios: 'doc.text.magnifyingglass', android: 'analytics', web: 'analytics' },
+      iconBgColor: Brand.accentAmberBg,
+      iconColor: Brand.accentAmber,
+      href: '/analytics',
+    },
+  ];
 
 // ─── Screen ───────────────────────────────────────────────────────────────────
 

@@ -1,6 +1,7 @@
 import { type ComponentProps } from 'react';
+import { Image as ExpoImage } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 
 import { Skeleton } from '@/components/home/Skeleton';
@@ -56,31 +57,33 @@ export function RecentActivityCard({ session }: RecentActivityCardProps) {
   const durationMin = Math.ceil(session.durationSeconds / 60);
 
   return (
-    <View style={styles.card} accessibilityLabel="Recent activity">
-      <View style={styles.left}>
-        <View style={[styles.iconBadge, { backgroundColor: badgeBg }]}>
-          <SymbolView name={icon} size={20} tintColor={iconColor} />
+    <View style={styles.cardOuter} accessibilityLabel="Recent activity">
+      <View style={styles.card}>
+        <View style={styles.left}>
+          <View style={[styles.iconBadge, { backgroundColor: badgeBg }]}>
+            <SymbolView name={icon} size={20} tintColor={iconColor} />
+          </View>
         </View>
-      </View>
 
-      <View style={styles.body}>
-        <Text style={styles.modeName} numberOfLines={1}>
-          {session.modeName}
-        </Text>
-        <Text style={styles.meta}>
-          {formatRelativeDate(session.completedAt)} · {durationMin} min
-        </Text>
-      </View>
+        <View style={styles.body}>
+          <Text style={styles.modeName} numberOfLines={1}>
+            {session.modeName}
+          </Text>
+          <Text style={styles.meta}>
+            {formatRelativeDate(session.completedAt)} · {durationMin} min
+          </Text>
+        </View>
 
-      <Pressable
-        style={({ pressed }) => [styles.resumeBtn, pressed && styles.resumeBtnPressed]}
-        onPress={() => router.push(`/analytics/${session.analyticsReportId}` as never)}
-        accessibilityRole="button"
-        accessibilityLabel={`Resume insights for ${session.modeName}`}
-      >
-        <Text style={styles.resumeLabel}>Insights</Text>
-        <SymbolView name={CHEVRON_ICON} size={11} tintColor={Brand.primary} />
-      </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.resumeBtn, pressed && styles.resumeBtnPressed]}
+          onPress={() => router.push(`/analytics/${session.analyticsReportId}` as never)}
+          accessibilityRole="button"
+          accessibilityLabel={`Resume insights for ${session.modeName}`}
+        >
+          <Text style={styles.resumeLabel}>Insights</Text>
+          <SymbolView name={CHEVRON_ICON} size={11} tintColor={Brand.primary} />
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -92,9 +95,16 @@ function EmptyState() {
 
   return (
     <View
-      style={styles.emptyCard}
+      style={styles.cardOuter}
       accessibilityLabel="No recent sessions — start your first session"
     >
+      <View style={styles.emptyCard}>
+      <ExpoImage
+        source={require('@/assets/images/coach-resting.png')}
+        style={styles.emptyCoach}
+        contentFit="contain"
+        accessibilityLabel="Coach resting in no recent sessions state"
+      />
       <View style={[styles.iconBadge, { backgroundColor: Brand.primaryBadgeBg }]}>
         <SymbolView name={micIcon} size={22} tintColor={Brand.primary} />
       </View>
@@ -115,6 +125,7 @@ function EmptyState() {
         <Text style={styles.resumeLabel}>Begin</Text>
         <SymbolView name={CHEVRON_ICON} size={11} tintColor={Brand.primary} />
       </Pressable>
+      </View>
     </View>
   );
 }
@@ -122,48 +133,77 @@ function EmptyState() {
 /** Loading skeleton matching the card dimensions */
 export function RecentActivityCardSkeleton() {
   return (
-    <View style={styles.card}>
-      <Skeleton width={44} height={44} borderRadius={14} />
-      <View style={{ flex: 1, gap: 6 }}>
-        <Skeleton width="60%" height={14} />
-        <Skeleton width="40%" height={12} />
+    <View style={styles.cardOuter}>
+      <View style={styles.card}>
+        <Skeleton width={44} height={44} borderRadius={14} />
+        <View style={{ flex: 1, gap: 6 }}>
+          <Skeleton width="60%" height={14} />
+          <Skeleton width="40%" height={12} />
+        </View>
+        <Skeleton width={64} height={30} borderRadius={Radius.md} />
       </View>
-      <Skeleton width={64} height={30} borderRadius={Radius.md} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
+  cardOuter: {
     marginHorizontal: Spacing.three,
-    backgroundColor: Brand.cardBg,
+    borderRadius: Radius.lg,
+    overflow: 'visible',
+    shadowColor: Brand.shadowColor,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.06,
+    shadowRadius: 10,
+    ...Platform.select({
+      ios: {
+        elevation: 2,
+      },
+      default: {
+        elevation: 0,
+      },
+    }),
+  },
+  card: {
+    backgroundColor: Platform.select({
+      ios: 'rgba(255,255,255,0.26)',
+      default: 'rgba(237,228,252,0.72)',
+    }),
     borderRadius: Radius.lg,
     padding: Spacing.three,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
-    shadowColor: Brand.shadowColor,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
-    shadowRadius: 12,
-    elevation: 4,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Platform.select({
+      ios: 'rgba(255,255,255,0.55)',
+      default: 'rgba(255,255,255,0.75)',
+    }),
+    borderCurve: 'continuous',
   },
   emptyCard: {
-    marginHorizontal: Spacing.three,
-    backgroundColor: Brand.cardBg,
+    backgroundColor: Platform.select({
+      ios: 'rgba(255,255,255,0.26)',
+      default: 'rgba(237,228,252,0.72)',
+    }),
     borderRadius: Radius.lg,
     padding: Spacing.three,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.three,
-    shadowColor: Brand.shadowColor,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.10,
-    shadowRadius: 12,
-    elevation: 4,
-    borderWidth: 1.5,
-    borderColor: Brand.primaryBadgeBg,
-    borderStyle: 'dashed',
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Platform.select({
+      ios: 'rgba(255,255,255,0.55)',
+      default: 'rgba(255,255,255,0.75)',
+    }),
+    borderCurve: 'continuous',
+  },
+  emptyCoach: {
+    width: 52,
+    height: 52,
+    marginRight: -Spacing.one,
   },
   left: {
     flexShrink: 0,

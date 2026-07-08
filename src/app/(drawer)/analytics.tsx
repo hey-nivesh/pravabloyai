@@ -1,16 +1,29 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, ScrollView } from 'react-native';
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
 import { Brand, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { useLatestAnalytics } from '@/hooks/useLatestAnalytics';
 
 export default function AnalyticsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { loading, report, error } = useLatestAnalytics();
 
   const topPadding = Platform.OS === 'android' ? insets.top : insets.top + Spacing.two;
+  const full = report?.full_report ?? {};
+  const fluencyScore = Number(report?.fluency_score ?? report?.score ?? full.fluency_score ?? 0);
+  const confidenceScore = Number(report?.confidence_score ?? full.confidence_score ?? 0);
+  const wpm = Number(report?.wpm ?? full.wpm ?? 0);
+  const fillerCount = Number(report?.filler_word_count ?? report?.filler_count ?? full.filler_word_count ?? 0);
+  const grammar = report?.grammar_gaps ?? report?.grammar_corrections ?? full.grammar_gaps ?? [];
+  const strengths = report?.strengths ?? full.strengths ?? [];
+  const improvements = report?.improvement_areas ?? full.improvement_areas ?? [];
+  const vocabFeedback = report?.vocab_feedback ?? full.vocabulary_feedback ?? '';
+  const overall = full.overall_evaluation ?? '';
 
   return (
     <View style={styles.root}>
@@ -33,28 +46,91 @@ export default function AnalyticsScreen() {
         <View style={{ width: 40 }} />
       </View>
 
-      <View style={styles.content}>
-        <View style={styles.iconContainer}>
-          <SymbolView
-            name={{ ios: 'doc.text.magnifyingglass', android: 'analytics', web: 'analytics' }}
-            size={48}
-            tintColor={Brand.accentAmber}
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.four }]}>
+        <View style={styles.heroCard}>
+          <Image
+            source={require('@/assets/images/coach-explaining.png')}
+            style={styles.coachImage}
+            contentFit="contain"
+            accessibilityLabel="Coach analytics overview"
           />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.title}>AI Insight Report</Text>
+            <Text style={styles.description}>
+              {overall || 'Your latest conversation analysis appears here with specific strengths and improvements.'}
+            </Text>
+          </View>
         </View>
-        <Text style={styles.title}>Analytics Report Stub</Text>
-        <Text style={styles.description}>
-          Get deep AI-driven analysis on grammar, pronunciation accuracy, vocabulary richness, and speech clarity.
-        </Text>
-        
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.ctaBtn, pressed && styles.ctaBtnPressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Return to Home Dashboard"
-        >
-          <Text style={styles.ctaText}>Go Back to Dashboard</Text>
-        </Pressable>
-      </View>
+
+        {loading && <Text style={styles.helperText}>Loading latest analytics...</Text>}
+        {error && <Text style={styles.errorText}>{error}</Text>}
+
+        {!loading && !report && (
+          <Text style={styles.helperText}>
+            No completed report yet. Finish one voice session to generate personalized analytics.
+          </Text>
+        )}
+
+        {!loading && report && (
+          <>
+            <View style={styles.scoreRow}>
+              <ScoreBadge label="Fluency" value={`${fluencyScore}%`} />
+              <ScoreBadge label="Confidence" value={`${confidenceScore}%`} />
+              <ScoreBadge label="WPM" value={`${wpm}`} />
+              <ScoreBadge label="Fillers" value={`${fillerCount}`} />
+            </View>
+
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionTitle}>Grammar Focus</Text>
+              {Array.isArray(grammar) && grammar.length > 0 ? (
+                grammar.slice(0, 3).map((item: any, idx: number) => (
+                  <Text key={`g-${idx}`} style={styles.bulletText}>
+                    • {item?.original ?? 'Statement'} → {item?.corrected ?? 'Improved phrasing'}
+                  </Text>
+                ))
+              ) : (
+                <Text style={styles.bulletText}>• No major grammar corrections were flagged.</Text>
+              )}
+            </View>
+
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionTitle}>Strengths</Text>
+              {(Array.isArray(strengths) && strengths.length > 0 ? strengths : ['Steady participation and active speaking turns.']).map(
+                (item: string, idx: number) => (
+                  <Text key={`s-${idx}`} style={styles.bulletText}>• {item}</Text>
+                ),
+              )}
+            </View>
+
+            <View style={styles.sectionCard}>
+              <Text style={styles.sectionTitle}>Next Improvements</Text>
+              {(
+                Array.isArray(improvements) && improvements.length > 0
+                  ? improvements
+                  : ['Reduce fillers and aim for clearer sentence completion before pauses.']
+              ).map((item: string, idx: number) => (
+                <Text key={`i-${idx}`} style={styles.bulletText}>• {item}</Text>
+              ))}
+            </View>
+
+            {!!vocabFeedback && (
+              <View style={styles.sectionCard}>
+                <Text style={styles.sectionTitle}>Vocabulary Coaching</Text>
+                <Text style={styles.description}>{vocabFeedback}</Text>
+              </View>
+            )}
+          </>
+        )}
+      </ScrollView>
+    </View>
+  );
+}
+
+function ScoreBadge({ label, value }: { label: string; value: string }) {
+  return (
+    <View style={styles.scoreBadge}>
+      <Text style={styles.scoreLabel}>{label}</Text>
+      <Text style={styles.scoreValue}>{value}</Text>
     </View>
   );
 }
@@ -98,58 +174,68 @@ const styles = StyleSheet.create({
     color: Brand.primaryDark,
   },
   content: {
-    flex: 1,
     padding: Spacing.four,
-    alignItems: 'center',
-    justifyContent: 'center',
+    gap: Spacing.three,
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
     width: '100%',
-    gap: Spacing.three,
   },
-  iconContainer: {
-    width: 96,
-    height: 96,
-    borderRadius: 32,
-    backgroundColor: Brand.accentAmberBg,
-    justifyContent: 'center',
-    alignItems: 'center',
+  heroCard: {
+    backgroundColor: Brand.cardBg,
+    borderRadius: Radius.lg,
+    padding: Spacing.three,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.7)',
-    marginBottom: Spacing.two,
+    borderColor: 'rgba(127, 34, 253, 0.12)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
   },
+  coachImage: { width: 92, height: 92 },
   title: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: Brand.primaryDark,
   },
   description: {
-    fontSize: 14,
+    fontSize: 13,
     color: Brand.grayText,
-    textAlign: 'center',
+    textAlign: 'left',
     lineHeight: 20,
-    paddingHorizontal: Spacing.four,
-    marginBottom: Spacing.four,
   },
-  ctaBtn: {
+  helperText: { color: Brand.grayText, textAlign: 'center', fontSize: 13 },
+  errorText: { color: '#EF4444', textAlign: 'center', fontSize: 13 },
+  scoreRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.two,
+  },
+  scoreBadge: {
+    minWidth: '47%',
     backgroundColor: Brand.cardBg,
-    paddingVertical: Spacing.three,
-    paddingHorizontal: Spacing.five,
+    paddingVertical: Spacing.two,
+    paddingHorizontal: Spacing.three,
     borderRadius: Radius.md,
     borderWidth: 1,
-    borderColor: 'rgba(76, 14, 158, 0.12)',
-    shadowColor: Brand.shadowColor,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 2,
+    borderColor: 'rgba(127, 34, 253, 0.12)',
   },
-  ctaBtnPressed: {
-    opacity: 0.85,
+  scoreLabel: { color: Brand.grayText, fontSize: 11, fontWeight: '600' },
+  scoreValue: { color: Brand.primaryDark, fontSize: 18, fontWeight: '800' },
+  sectionCard: {
+    backgroundColor: Brand.cardBg,
+    borderRadius: Radius.lg,
+    padding: Spacing.three,
+    borderWidth: 1,
+    borderColor: 'rgba(127, 34, 253, 0.12)',
   },
-  ctaText: {
+  sectionTitle: {
+    color: Brand.primaryDark,
     fontSize: 14,
     fontWeight: '700',
-    color: Brand.primary,
+    marginBottom: Spacing.one,
+  },
+  bulletText: {
+    color: Brand.grayText,
+    fontSize: 13,
+    lineHeight: 20,
   },
 });

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { 
   createAudioPlayer, 
-  getRecordingPermissionsAsync, 
   requestRecordingPermissionsAsync, 
   setAudioModeAsync, 
   useAudioRecorder, 
@@ -24,6 +23,10 @@ export interface UseVoiceStreamProps {
   onInterrupted?: () => void;
 }
 
+const GEMINI_LIVE_INPUT_SAMPLE_RATE = 16000;
+const GEMINI_LIVE_OUTPUT_SAMPLE_RATE = 24000;
+const PLAYBACK_BATCH_WINDOW_MS = 120;
+
 // ─── Pure JS Base64 utilities (no Buffer, no atob — environment-safe) ──────────
 const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 const BASE64_LUT: number[] = new Array(256).fill(-1);
@@ -32,23 +35,6 @@ for (let i = 0; i < BASE64_CHARS.length; i++) BASE64_LUT[BASE64_CHARS.charCodeAt
 function generateVoiceSessionId(): string {
   // Stable-ish ID for analytics_reports linking.
   return `vs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
-}
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let result = '';
-  const len = bytes.length;
-  for (let i = 0; i < len; i += 3) {
-    const b1 = bytes[i];
-    const b2 = i + 1 < len ? bytes[i + 1] : 0;
-    const b3 = i + 2 < len ? bytes[i + 2] : 0;
-    const val = (b1 << 16) | (b2 << 8) | b3;
-    result += BASE64_CHARS[(val >> 18) & 63];
-    result += BASE64_CHARS[(val >> 12) & 63];
-    result += i + 1 < len ? BASE64_CHARS[(val >> 6) & 63] : '=';
-    result += i + 2 < len ? BASE64_CHARS[val & 63] : '=';
-  }
-  return result;
 }
 
 function base64ToUint8Array(base64: string): Uint8Array {
@@ -86,10 +72,20 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
   return result;
 }
 
+function mergeUint8Arrays(chunks: Uint8Array[]): Uint8Array {
+  const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+  const merged = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    merged.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return merged;
+}
+
 // ─── PCM → WAV container (44-byte RIFF/WAV header) ─────────────────────────────
-function pcmBase64ToWavBase64(pcmBase64: string, sampleRate = 16000): string {
+function pcmBytesToWavBase64(pcmBytes: Uint8Array, sampleRate: number): string {
   try {
-    const pcmBytes = base64ToUint8Array(pcmBase64);
     const pcmLength = pcmBytes.length;
     const wavBuffer = new ArrayBuffer(44 + pcmLength);
     const view = new DataView(wavBuffer);
@@ -117,8 +113,8 @@ function pcmBase64ToWavBase64(pcmBase64: string, sampleRate = 16000): string {
 
     return uint8ArrayToBase64(u8);
   } catch (err) {
-    console.error('[pcmBase64ToWavBase64] Conversion failed:', err);
-    return pcmBase64; // Fallback: return as-is
+    console.error('[pcmBytesToWavBase64] Conversion failed:', err);
+    throw err;
   }
 }
 
@@ -131,15 +127,19 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
   const [aiAmplitude, setAiAmplitude] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [livePacing, setLivePacing] = useState<{ wpm: number; fillerCount: number; pauseFlag: boolean } | null>(null);
+  const [isMuted, setIsMuted] = useState(false);
+  const isMutedRef = useRef(false);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const sessionAnalyzedResolverRef = useRef<((reportId: string | null) => void) | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
-  const audioQueueRef = useRef<string[]>([]); // Base64 WAV audio chunks queue
+  const pcmChunkQueueRef = useRef<Uint8Array[]>([]);
   const currentSoundRef = useRef<AudioPlayer | null>(null);
   const isPlayingRef = useRef(false);
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 3;
-  const receivedChunksRef = useRef(0);
-  const playTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const playbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const playNextChunkRef = useRef<() => void>(() => {});
 
   // ── Part A: Recorder state machine ──────────────────────────────────
   const recorderStateRef = useRef<RecorderState>('idle');
@@ -178,10 +178,9 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
   // re-creating the stream on every render.
   const socketSendRef = useRef<((data: ArrayBuffer) => void) | null>(null);
   const userSpeakingRef = useRef(false);
-  const handleBargeInRef = useRef<() => void>(() => {});
 
   const { stream: nativeStream, isStreaming: isAudioStreaming } = useAudioStream({
-    sampleRate: 16000,
+    sampleRate: GEMINI_LIVE_INPUT_SAMPLE_RATE,
     channels: 1,
     encoding: 'int16',
     onBuffer: (buffer) => {
@@ -190,8 +189,8 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
       // through the phone speaker. The speaker audio bleeds into the mic,
       // and Gemini's own VAD detects it as "user speech", causing it to
       // interrupt itself in an infinite barge-in loop.
-      // Only send mic audio when the AI is silent (not playing).
-      if (socketSendRef.current && !isPlayingRef.current) {
+      // Only send mic audio when the AI is silent (not playing) AND not muted.
+      if (socketSendRef.current && !isPlayingRef.current && !isMutedRef.current) {
         socketSendRef.current(buffer.data);
       }
 
@@ -269,36 +268,22 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
     }
 
     // Release playback
-    if (playTimeoutRef.current) {
-      clearTimeout(playTimeoutRef.current);
-      playTimeoutRef.current = null;
+    if (playbackTimerRef.current) {
+      clearTimeout(playbackTimerRef.current);
+      playbackTimerRef.current = null;
     }
     if (currentSoundRef.current) {
       try { currentSoundRef.current.remove(); } catch (_) {}
       currentSoundRef.current = null;
     }
     isPlayingRef.current = false;
-    audioQueueRef.current = [];
+    pcmChunkQueueRef.current = [];
     socketSendRef.current = null;
   }, [transitionState]);
 
   // ── Playback ─────────────────────────────────────────────────────────
-  // Strategy: backend buffers Gemini PCM parts and sends fewer, larger segments.
-  // We play one queued segment at a time (no additional chunk-merging here).
-  const triggerPlayWithJitterBuffer = useCallback(() => {
-    if (isPlayingRef.current) return;
-    if (playTimeoutRef.current) return; // Already scheduled
-
-    // Small delay to let the first segment accumulate, without causing extra
-    // per-chunk file transitions.
-    playTimeoutRef.current = setTimeout(() => {
-      playTimeoutRef.current = null;
-      playNextChunk();
-    }, 120);
-  }, []);
-
   const playNextChunk = useCallback(async () => {
-    if (audioQueueRef.current.length === 0) {
+    if (pcmChunkQueueRef.current.length === 0) {
       isPlayingRef.current = false;
       setAiSpeaking(false);
       propsRef.current.onAiSpeechEnd?.();
@@ -311,16 +296,16 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
     setAiSpeaking(true);
     propsRef.current.onAiSpeechStart?.();
 
-    // Play a single queued segment (PCM base64 already merged server-side).
-    const pcmBase64 = audioQueueRef.current.shift();
-    if (!pcmBase64) {
+    // Collapse all currently queued Gemini PCM parts into one playback segment.
+    const queuedChunks = pcmChunkQueueRef.current.splice(0, pcmChunkQueueRef.current.length);
+    if (queuedChunks.length === 0) {
       isPlayingRef.current = false;
       return;
     }
 
     try {
-      // PCM base64 → WAV base64 (server sends int16 PCM @ 16kHz).
-      const wavBase64 = pcmBase64ToWavBase64(pcmBase64, 16000);
+      const pcmBytes = mergeUint8Arrays(queuedChunks);
+      const wavBase64 = pcmBytesToWavBase64(pcmBytes, GEMINI_LIVE_OUTPUT_SAMPLE_RATE);
 
       const cacheDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory ?? '';
       const fileUri = `${cacheDir}ai_segment_${Date.now()}.wav`;
@@ -345,7 +330,7 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
           isPlayingRef.current = false;
           FileSystem.deleteAsync(fileUri, { idempotent: true }).catch(() => {});
           sub.remove();
-          // Play next batch (chunks that arrived while we were playing)
+          // Play the next batch that accumulated during this segment.
           playNextChunk();
         }
       });
@@ -353,18 +338,34 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
     } catch (e) {
       console.warn('[playNextChunk] Playback error:', e);
       isPlayingRef.current = false;
-      playNextChunk();
+      playNextChunkRef.current();
     }
+  }, []);
+
+  useEffect(() => {
+    playNextChunkRef.current = () => {
+      void playNextChunk();
+    };
+  }, [playNextChunk]);
+
+  const schedulePlayback = useCallback(() => {
+    if (isPlayingRef.current) return;
+    if (playbackTimerRef.current) return;
+
+    playbackTimerRef.current = setTimeout(() => {
+      playbackTimerRef.current = null;
+      playNextChunkRef.current();
+    }, PLAYBACK_BATCH_WINDOW_MS);
   }, []);
 
   // ── Barge-in ──────────────────────────────────────────────────────────
   const handleBargeIn = useCallback(() => {
-    if (playTimeoutRef.current) {
-      clearTimeout(playTimeoutRef.current);
-      playTimeoutRef.current = null;
+    if (playbackTimerRef.current) {
+      clearTimeout(playbackTimerRef.current);
+      playbackTimerRef.current = null;
     }
-    if (isPlayingRef.current || audioQueueRef.current.length > 0) {
-      audioQueueRef.current = [];
+    if (isPlayingRef.current || pcmChunkQueueRef.current.length > 0) {
+      pcmChunkQueueRef.current = [];
       isPlayingRef.current = false;
       setAiSpeaking(false);
       propsRef.current.onAiSpeechEnd?.();
@@ -373,15 +374,9 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
         try { currentSoundRef.current.remove(); } catch (_) {}
         currentSoundRef.current = null;
       }
-      if (socketRef.current?.readyState === WebSocket.OPEN) {
-        socketRef.current.send(JSON.stringify({ event: 'interrupted' }));
-      }
       propsRef.current.onInterrupted?.();
     }
   }, []);
-
-  // Keep barge-in ref current so the audio-stream callback can call it
-  useEffect(() => { handleBargeInRef.current = handleBargeIn; }, [handleBargeIn]);
 
   // ── Start recording (state-machine-guarded) ───────────────────────────
   const startRecording = useCallback(async () => {
@@ -408,9 +403,9 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
 
       transitionState('preparing');
-      await audioRecorder.prepareToRecordAsync();
+      await audioRecorderRef.current?.prepareToRecordAsync();
       transitionState('recording');
-      await audioRecorder.record();
+      await audioRecorderRef.current?.record();
 
       // Start the real-time stream for binary PCM capture
       try {
@@ -426,10 +421,35 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
     }
   }, [transitionState]);
 
+  // ── Graceful end session (waits for analytics report) ─────────────────
+  const endSession = useCallback((): Promise<{ reportId: string | null }> => {
+    return new Promise((resolve) => {
+      const ws = socketRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        resolve({ reportId: null });
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        sessionAnalyzedResolverRef.current = null;
+        resolve({ reportId: null });
+      }, 45000);
+
+      sessionAnalyzedResolverRef.current = (reportId) => {
+        clearTimeout(timeout);
+        resolve({ reportId });
+      };
+
+      ws.send(JSON.stringify({ event: 'end_session' }));
+    });
+  }, []);
+
   // ── Disconnect ───────────────────────────────────────────────────────
   const disconnect = useCallback(async () => {
     setStatus('idle');
     setLivePacing(null);
+    setSessionId(null);
+    sessionAnalyzedResolverRef.current = null;
     socketSendRef.current = null;
     if (socketRef.current) {
       socketRef.current.close();
@@ -448,7 +468,6 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
     setStatus('connecting');
     setError(null);
     reconnectAttemptsRef.current = 0;
-    receivedChunksRef.current = 0;
 
     const gatewayUrl =
       process.env.EXPO_PUBLIC_VOICE_GATEWAY_URL ?? 'wss://api.pravabloy.ai/ws/voice-session';
@@ -463,6 +482,7 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
     }
 
     const voiceSessionId = sessionId ?? generateVoiceSessionId();
+    setSessionId(voiceSessionId);
 
     const wsUrl =
       `${gatewayUrl}?caseStudyId=${encodeURIComponent(caseStudyId)}` +
@@ -496,26 +516,59 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
       ws.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          if (data.event === 'audio') {
-            receivedChunksRef.current += 1;
-            if (receivedChunksRef.current % 20 === 0) {
-              console.log(`[WebSocket] Received ${receivedChunksRef.current} audio segments`);
-            }
-            audioQueueRef.current.push(data.payload.base64);
-            if (!isPlayingRef.current) triggerPlayWithJitterBuffer();
-          } else if (data.event === 'transcript') {
-            const { text, sender, isFinal } = data.payload;
-            const role = sender === 'user' ? 'user' : 'ai';
-            setTranscript((prev) => {
-              const last = prev[prev.length - 1];
-              if (last?.sender === role) {
-                return [...prev.slice(0, -1), { sender: role, text }];
+          if (data.type === 'message') {
+            const message = data.data;
+            const inputTranscription = message?.serverContent?.inputTranscription;
+            const modelParts = message?.serverContent?.modelTurn?.parts ?? [];
+
+            for (const part of modelParts) {
+              if (part?.inlineData?.data) {
+                pcmChunkQueueRef.current.push(base64ToUint8Array(part.inlineData.data));
               }
-              return [...prev, { sender: role, text }];
-            });
-            propsRef.current.onTranscriptReceived?.(text, isFinal);
+              if (part?.text) {
+                setTranscript((prev) => {
+                  const last = prev[prev.length - 1];
+                  if (last?.sender === 'ai') {
+                    return [...prev.slice(0, -1), { sender: 'ai', text: `${last.text}${part.text}` }];
+                  }
+                  return [...prev, { sender: 'ai', text: part.text }];
+                });
+                propsRef.current.onTranscriptReceived?.(part.text, Boolean(message?.serverContent?.turnComplete));
+              }
+            }
+
+            const userTranscriptText =
+              inputTranscription?.text ??
+              inputTranscription?.parts?.map((part: any) => part?.text ?? '').join('') ??
+              '';
+
+            if (userTranscriptText) {
+              setTranscript((prev) => {
+                const last = prev[prev.length - 1];
+                if (last?.sender === 'user') {
+                  return [...prev.slice(0, -1), { sender: 'user', text: `${last.text}${userTranscriptText}` }];
+                }
+                return [...prev, { sender: 'user', text: userTranscriptText }];
+              });
+              propsRef.current.onTranscriptReceived?.(
+                userTranscriptText,
+                Boolean(message?.serverContent?.turnComplete),
+              );
+            }
+
+            if (modelParts.some((part: any) => part?.inlineData?.data)) {
+              schedulePlayback();
+            }
+
+            if (message?.serverContent?.interrupted) {
+              handleBargeIn();
+            }
           } else if (data.event === 'live_pacing') {
             setLivePacing(data.payload);
+          } else if (data.event === 'session_analyzed') {
+            const reportId = data.payload?.reportId ?? null;
+            sessionAnalyzedResolverRef.current?.(reportId);
+            sessionAnalyzedResolverRef.current = null;
           } else if (data.event === 'interrupted') {
             handleBargeIn();
           } else if (data.event === 'error') {
@@ -555,7 +608,7 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
     setupSocket();
     await startRecording();
     return voiceSessionId;
-  }, [disconnect, startRecording, playNextChunk, handleBargeIn]);
+  }, [disconnect, startRecording, handleBargeIn, schedulePlayback]);
 
   // ── Metering from recorder (fallback amplitude when stream not running) ──
   useEffect(() => {
@@ -615,6 +668,14 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
     }, 100);
   }, []);
 
+  // ── Mute toggle ──────────────────────────────────────────────────────────
+  const toggleMute = useCallback(() => {
+    const next = !isMutedRef.current;
+    isMutedRef.current = next;
+    setIsMuted(next);
+    console.log(`[useVoiceStream] Mic ${next ? 'MUTED' : 'UNMUTED'}`);
+  }, []);
+
   return {
     status,
     userSpeaking,
@@ -624,10 +685,14 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
     aiAmplitude,
     error,
     livePacing,
+    isMuted,
+    sessionId,
     connect,
     disconnect,
+    endSession,
     sendMessage,
     simulateAISpeak,
     handleBargeIn,
+    toggleMute,
   };
 }

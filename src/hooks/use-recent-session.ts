@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
 
 export type VoiceSession = {
   id: string;
@@ -27,13 +28,74 @@ export function useRecentSession(): UseRecentSessionResult {
   const [result, setResult] = useState<UseRecentSessionResult>({ status: 'loading', session: null });
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      // Return null to show the empty-state card (first-time user).
-      // Replace with a real Supabase fetch to get actual session data.
-      setResult({ status: 'ready', session: null });
-    }, 1000);
+    let isMounted = true;
+    const load = async () => {
+      try {
+        const { data: auth } = await supabase.auth.getSession();
+        const userId = auth?.session?.user?.id;
+        if (!userId) {
+          if (isMounted) setResult({ status: 'ready', session: null });
+          return;
+        }
 
-    return () => clearTimeout(timer);
+        const { data: sessionRow } = await supabase
+          .from('voice_sessions')
+          .select('*')
+          .eq('user_id', userId)
+          .not('completed_at', 'is', null)
+          .order('completed_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (!sessionRow) {
+          if (isMounted) setResult({ status: 'ready', session: null });
+          return;
+        }
+
+        const durationSec = Math.max(
+          0,
+          Math.round(
+            (new Date(sessionRow.completed_at ?? sessionRow.updated_at).getTime() -
+              new Date(sessionRow.created_at).getTime()) /
+              1000,
+          ),
+        );
+
+        const category =
+          sessionRow.mode === 'executive'
+            ? 'executive'
+            : sessionRow.mode === 'mock_interview'
+            ? 'interview'
+            : 'casual';
+
+        const modeName =
+          sessionRow.case_study_id === 'salary-negotiation'
+            ? 'Salary Negotiation'
+            : sessionRow.case_study_id === 'system-design'
+            ? 'System Design Interview'
+            : sessionRow.case_study_id === 'hotel-checkin'
+            ? 'Hotel Check-In'
+            : 'Ordering at a Cafe';
+
+        const mapped: VoiceSession = {
+          id: String(sessionRow.id),
+          modeName,
+          category,
+          completedAt: String(sessionRow.completed_at ?? sessionRow.updated_at ?? sessionRow.created_at),
+          durationSeconds: durationSec,
+          analyticsReportId: String(sessionRow.analytics_report_id ?? ''),
+        };
+
+        if (isMounted) setResult({ status: 'ready', session: mapped });
+      } catch (_) {
+        if (isMounted) setResult({ status: 'ready', session: null });
+      }
+    };
+
+    load();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   return result;
