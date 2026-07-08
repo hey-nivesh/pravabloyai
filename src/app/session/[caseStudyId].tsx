@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
+  Image,
   View,
   Text,
   StyleSheet,
@@ -30,6 +31,8 @@ import { createAudioPlayer, getRecordingPermissionsAsync, requestRecordingPermis
 import { Brand, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { CASE_STUDIES, CaseStudy } from '../(drawer)/practice';
 import { useVoiceStream } from '@/hooks/useVoiceStream';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/context/auth-context';
 
 // We import Lottie dynamically to prevent crash if not installed/configured properly
 let LottieView: any = null;
@@ -46,6 +49,7 @@ export default function VoiceSessionScreen() {
   const { caseStudyId } = useLocalSearchParams<{ caseStudyId: string }>();
   const insets = useSafeAreaInsets();
   const isReducedMotion = useReducedMotion();
+  const { session: authSession } = useAuth();
 
   // Find the selected scenario
   const caseStudy = CASE_STUDIES.find((cs) => cs.id === caseStudyId) || CASE_STUDIES[0];
@@ -59,9 +63,11 @@ export default function VoiceSessionScreen() {
   const [showTranscript, setShowTranscript] = useState(true);
   
   // Post-session feedback loading states
-  const [isAnalyzing, setIsAnalyzing] = useState(true);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [savedPhrases, setSavedPhrases] = useState<string[]>([]);
   const [saveVaultAnimated, setSaveVaultAnimated] = useState(false);
+  const [activeVoiceSessionId, setActiveVoiceSessionId] = useState<string | null>(null);
+  const [analyticsReport, setAnalyticsReport] = useState<any | null>(null);
 
   // Audio Pronunciation sound reference
   const pronunciationSoundRef = useRef<AudioPlayer | null>(null);
@@ -214,7 +220,7 @@ export default function VoiceSessionScreen() {
     if (permission.status !== 'granted') {
       setShowPermissionModal(true);
     } else {
-      startVoiceSession();
+      void startVoiceSession();
     }
   };
 
@@ -222,15 +228,16 @@ export default function VoiceSessionScreen() {
     setShowPermissionModal(false);
     const askPermission = await requestRecordingPermissionsAsync();
     if (askPermission.status === 'granted') {
-      startVoiceSession();
+      void startVoiceSession();
     } else {
       AccessibilityInfo.announceForAccessibility('Microphone permission denied.');
     }
   };
 
-  const startVoiceSession = () => {
+  const startVoiceSession = async () => {
     setScreenState(2);
-    voice.connect(caseStudy.id);
+    const sid = await voice.connect(caseStudy.id);
+    setActiveVoiceSessionId(sid);
     AccessibilityInfo.announceForAccessibility('Session started. Start speaking.');
   };
 
@@ -239,15 +246,62 @@ export default function VoiceSessionScreen() {
     setScreenState(3);
     AccessibilityInfo.announceForAccessibility('Analyzing your conversation. Please wait.');
 
-    // Trigger analysis mock load
     setIsAnalyzing(true);
-    setTimeout(() => {
+    setAnalyticsReport(null);
+
+    const sid = activeVoiceSessionId;
+    const userId = authSession?.user?.id;
+    if (!sid) {
       setIsAnalyzing(false);
-      // Stage results animations
+      // Fallback animations
       fluencyProgress.value = withSpring(0.86, { damping: 12 });
-      wpmDialAnim.value = withSpring(0.72, { damping: 10 });
-      AccessibilityInfo.announceForAccessibility('Analysis ready. Your Fluency score is 86 percent.');
-    }, 3500);
+      wpmDialAnim.value = withSpring(0.2, { damping: 10 });
+      return;
+    }
+
+    void (async () => {
+      const startedAt = Date.now();
+      const timeoutMs = 20000;
+      let report: any | null = null;
+
+      // Poll until the backend finishes writing analytics_reports.
+      while (Date.now() - startedAt < timeoutMs) {
+        try {
+          const q = supabase
+            .from('analytics_reports')
+            .select('*')
+            .eq('voice_session_id', sid)
+            .order('created_at', { ascending: false })
+            .limit(1);
+
+          const { data } = userId ? await q.eq('user_id', userId) : await q;
+
+          if (data && data.length > 0) {
+            report = data[0];
+            break;
+          }
+        } catch (e) {
+          // ignore and retry
+        }
+
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+
+      setAnalyticsReport(report);
+      setIsAnalyzing(false);
+
+      const full = report?.full_report ?? {};
+      const score = Number(report?.score ?? full.overallScore ?? 86);
+      const fillerCount = Number(report?.filler_count ?? full.fillerWordsCount ?? 0);
+
+      // Stage results animations
+      fluencyProgress.value = withSpring(Math.max(0, Math.min(1, score / 100)), { damping: 12 });
+      wpmDialAnim.value = withSpring(Math.max(0, Math.min(1, fillerCount / 10)), { damping: 10 });
+
+      AccessibilityInfo.announceForAccessibility(
+        `Analysis ready. Your Fluency score is ${Math.round(score)} percent.`,
+      );
+    })();
   };
 
   // Reset and restart practice
@@ -255,6 +309,8 @@ export default function VoiceSessionScreen() {
     setScreenState(1);
     setElapsedTime(0);
     voice.disconnect();
+    setActiveVoiceSessionId(null);
+    setAnalyticsReport(null);
   };
 
   // Save phrases animation / handler
@@ -531,7 +587,13 @@ export default function VoiceSessionScreen() {
                 tintColor="#EF4444"
               />
               <Text style={styles.reconnectText}>Connection failed</Text>
-              <Pressable style={styles.retryBtn} onPress={() => voice.connect(caseStudy.id)}>
+              <Pressable
+                style={styles.retryBtn}
+                onPress={async () => {
+                  const sid = await voice.connect(caseStudy.id);
+                  setActiveVoiceSessionId(sid);
+                }}
+              >
                 <Text style={styles.retryBtnText}>Retry Connection</Text>
               </Pressable>
             </View>
@@ -602,19 +664,31 @@ export default function VoiceSessionScreen() {
       );
     }
 
-    // Grammar gaps mockup details
-    const grammarGaps = [
-      {
-        said: 'I would like to have more money because I work a lot.',
-        better: 'I am seeking a salary adjustment that aligns with my increased scope of impact.',
-        audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
-      },
-      {
-        said: 'My results are very good this year.',
-        better: 'I have successfully exceeded all target achievements aligned with our quarterly goals.',
-        audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
-      }
-    ];
+    const report = analyticsReport;
+    const full = report?.full_report ?? {};
+    const score = Number(report?.score ?? full.overallScore ?? 86);
+    const fillerCount = Number(report?.filler_count ?? full.fillerWordsCount ?? 0);
+    const grammarCorrections = report?.grammar_corrections ?? full.grammarCorrections ?? [];
+    const vocabularyFeedback =
+      report?.vocab_feedback ?? full.vocabularyFeedback ?? 'Great job! Continue practicing daily.';
+
+    const fluencyLabel =
+      score >= 85 ? 'Proficient' : score >= 70 ? 'Developing' : 'Getting Started';
+
+    type GrammarGap = {
+      said: string;
+      better: string;
+      explanation: string;
+      audioUrl: string;
+    };
+
+    const grammarGaps: GrammarGap[] = (grammarCorrections ?? []).map((c: any) => ({
+      said: String(c.original ?? ''),
+      better: String(c.corrected ?? ''),
+      explanation: String(c.explanation ?? ''),
+      // Lightweight client-side pronunciation fallback (can be replaced with backend TTS later).
+      audioUrl: `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(String(c.corrected ?? c.original ?? ''))}&type=2`,
+    }));
     return (
       <ScrollView
         style={styles.feedbackScroll}
@@ -633,6 +707,15 @@ export default function VoiceSessionScreen() {
         )}
 
         <Text style={styles.feedbackTitle}>Practice Completed! 🎉</Text>
+        <View style={styles.reportAvatarRow}>
+          <View style={styles.reportAvatarWrap}>
+            <Image
+              source={require('@/assets/images/avatar.png')}
+              style={styles.reportAvatar}
+              accessibilityLabel="AI coach avatar"
+            />
+          </View>
+        </View>
         <Text style={styles.feedbackSubtitle}>Excellent progress today! Here is your speech performance report.</Text>
 
         {/* 1. Overall Fluency Score */}
@@ -640,33 +723,46 @@ export default function VoiceSessionScreen() {
           <Text style={styles.cardHeading}>Overall Fluency Score</Text>
           <View style={styles.fluencyContainer}>
             <View style={styles.circleProgressPlaceholder}>
-              <Text style={styles.fluencyScoreNum}>86%</Text>
-              <Text style={styles.fluencyLabel}>Proficient</Text>
+              <Text style={styles.fluencyScoreNum}>{Math.round(score)}%</Text>
+              <Text style={styles.fluencyLabel}>{fluencyLabel}</Text>
             </View>
             <View style={styles.scoreDetails}>
-              <Text style={styles.scoreDetailText}>✨ Grammatical Accuracy: 90%</Text>
-              <Text style={styles.scoreDetailText}>🗣️ Accent & Pronunciation: 82%</Text>
-              <Text style={styles.scoreDetailText}>📚 Vocabulary Enrichment: 85%</Text>
+              <Text style={styles.scoreDetailText}>🗯️ Filler words: {fillerCount}</Text>
+              <Text style={styles.scoreDetailText}>🧩 Grammar corrections: {grammarGaps.length}</Text>
+              <Text style={styles.scoreDetailText}>🧠 AI coach feedback loaded</Text>
             </View>
           </View>
         </Animated.View>
 
-        {/* 2. WPM Pacing Gauge */}
+        {/* 2. Filler Words / Delivery Gauge */}
         <View style={styles.reportCard}>
-          <Text style={styles.cardHeading}>Speech Pacing (WPM)</Text>
+          <Text style={styles.cardHeading}>Filler Words Detected</Text>
           <View style={styles.wpmContainer}>
             <View style={styles.speedometerContainer}>
               <View style={styles.gaugeBack} />
               <Animated.View style={[styles.gaugeNeedle, animatedDialStyle]} />
-              <Text style={styles.gaugeVal}>125</Text>
-              <Text style={styles.gaugeLabel}>Words per Minute</Text>
+              <Text style={styles.gaugeVal}>{fillerCount}</Text>
+              <Text style={styles.gaugeLabel}>Filler Words</Text>
             </View>
             <View style={styles.pacingExplanation}>
-              <View style={[styles.pacingStatusBadge, { backgroundColor: Brand.accentGreenLight }]}>
-                <Text style={[styles.pacingStatusText, { color: Brand.accentGreen }]}>Optimal Speed</Text>
+              <View
+                style={[
+                  styles.pacingStatusBadge,
+                  { backgroundColor: fillerCount <= 2 ? Brand.accentGreenLight : Brand.accentAmberBg },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.pacingStatusText,
+                    { color: fillerCount <= 2 ? Brand.accentGreen : Brand.accentAmber },
+                  ]}
+                >
+                  {fillerCount <= 2 ? 'Clean Delivery' : 'Needs Pausing'}
+                </Text>
               </View>
               <Text style={styles.pacingDesc}>
-                You spoke at an average of 125 WPM. The recommended pacing range for persuasive business English is 110–140 WPM.
+                You used {fillerCount} filler word(s). Try pausing briefly instead of using fillers like
+                “um”, “like”, or “you know”.
               </Text>
             </View>
           </View>
@@ -678,67 +774,83 @@ export default function VoiceSessionScreen() {
           <Text style={styles.cardSubtitle}>Compare your speech and tap the speaker to hear correct phrasing.</Text>
           
           <View style={styles.gapsList}>
-            {grammarGaps.map((gap, i) => (
-              <View key={i} style={styles.gapCard}>
-                <View style={styles.gapRowSaid}>
-                  <Text style={styles.gapLabel}>You said:</Text>
-                  <Text style={styles.gapTextSaid}>"{gap.said}"</Text>
-                </View>
-                
-                <View style={styles.gapRowBetter}>
-                  <View style={styles.betterTitleRow}>
-                    <Text style={styles.betterLabel}>Recommended alternative:</Text>
-                    <Pressable
-                      style={styles.audioPlayBtn}
-                      onPress={async () => {
-                        try {
-                          if (pronunciationSoundRef.current) {
-                            pronunciationSoundRef.current.release();
-                            pronunciationSoundRef.current = null;
-                          }
-                          const player = createAudioPlayer({ uri: gap.audioUrl });
-                          pronunciationSoundRef.current = player;
-                          player.play();
-                        } catch {}
-                      }}
-                      accessibilityRole="button"
-                      accessibilityLabel="Listen to pronunciation alternative"
-                    >
-                      <SymbolView
-                        name={{ ios: 'speaker.wave.2.fill', android: 'volume_up', web: 'volume_up' }}
-                        size={14}
-                        tintColor={Brand.primary}
-                      />
-                    </Pressable>
+            {grammarGaps.length === 0 ? (
+              <Text style={styles.emptyTranscript}>No major grammar corrections detected in this session.</Text>
+            ) : (
+              grammarGaps.map((gap, i) => (
+                <View key={i} style={styles.gapCard}>
+                  <View style={styles.gapRowSaid}>
+                    <Text style={styles.gapLabel}>You said:</Text>
+                    <Text style={styles.gapTextSaid}>"{gap.said}"</Text>
                   </View>
-                  <Text style={styles.gapTextBetter}>"{gap.better}"</Text>
-                </View>
 
-                {/* Save to Vault Action */}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.saveVaultPill,
-                    savedPhrases.includes(gap.better) && styles.saveVaultPillSaved,
-                    pressed && styles.saveVaultPillPressed,
-                  ]}
-                  onPress={() => handleSavePhrase(gap.better)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Save phrase to vocabulary vault"
-                >
-                  <SymbolView
-                    name={savedPhrases.includes(gap.better) ? { ios: 'checkmark.circle.fill', android: 'check_circle', web: 'check_circle' } : { ios: 'folder.badge.plus', android: 'create_new_folder', web: 'create_new_folder' }}
-                    size={13}
-                    tintColor={savedPhrases.includes(gap.better) ? Brand.accentGreen : Brand.primary}
-                  />
-                  <Text style={[
-                    styles.saveVaultText,
-                    savedPhrases.includes(gap.better) && { color: Brand.accentGreen }
-                  ]}>
-                    {savedPhrases.includes(gap.better) ? 'Saved in Vault' : 'Save to Vocab Vault'}
-                  </Text>
-                </Pressable>
-              </View>
-            ))}
+                  <View style={styles.gapRowBetter}>
+                    <View style={styles.betterTitleRow}>
+                      <Text style={styles.betterLabel}>Recommended alternative:</Text>
+                      <Pressable
+                        style={styles.audioPlayBtn}
+                        onPress={async () => {
+                          try {
+                            if (pronunciationSoundRef.current) {
+                              pronunciationSoundRef.current.release();
+                              pronunciationSoundRef.current = null;
+                            }
+                            const player = createAudioPlayer({ uri: gap.audioUrl });
+                            pronunciationSoundRef.current = player;
+                            player.play();
+                          } catch {}
+                        }}
+                        accessibilityRole="button"
+                        accessibilityLabel="Listen to pronunciation alternative"
+                      >
+                        <SymbolView
+                          name={{ ios: 'speaker.wave.2.fill', android: 'volume_up', web: 'volume_up' }}
+                          size={14}
+                          tintColor={Brand.primary}
+                        />
+                      </Pressable>
+                    </View>
+                    <Text style={styles.gapTextBetter}>"{gap.better}"</Text>
+
+                    {!!gap.explanation && (
+                      <Text style={styles.gapExplanationText}>
+                        {gap.explanation}
+                      </Text>
+                    )}
+                  </View>
+
+                  {/* Save to Vault Action */}
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.saveVaultPill,
+                      savedPhrases.includes(gap.better) && styles.saveVaultPillSaved,
+                      pressed && styles.saveVaultPillPressed,
+                    ]}
+                    onPress={() => handleSavePhrase(gap.better)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Save phrase to vocabulary vault"
+                  >
+                    <SymbolView
+                      name={
+                        savedPhrases.includes(gap.better)
+                          ? { ios: 'checkmark.circle.fill', android: 'check_circle', web: 'check_circle' }
+                          : { ios: 'folder.badge.plus', android: 'create_new_folder', web: 'create_new_folder' }
+                      }
+                      size={13}
+                      tintColor={savedPhrases.includes(gap.better) ? Brand.accentGreen : Brand.primary}
+                    />
+                    <Text
+                      style={[
+                        styles.saveVaultText,
+                        savedPhrases.includes(gap.better) && { color: Brand.accentGreen },
+                      ]}
+                    >
+                      {savedPhrases.includes(gap.better) ? 'Saved in Vault' : 'Save to Vocab Vault'}
+                    </Text>
+                  </Pressable>
+                </View>
+              ))
+            )}
           </View>
         </View>
 
@@ -754,9 +866,9 @@ export default function VoiceSessionScreen() {
               />
             </View>
             <View style={styles.lexiconDetails}>
-              <Text style={styles.lexiconRankName}>Level Up: Diplomatic Communicator</Text>
+              <Text style={styles.lexiconRankName}>{score >= 85 ? 'Level Up: Diplomatic Communicator' : score >= 70 ? 'Level Up: Confident Speaker' : 'Level Up: Smart Starter'}</Text>
               <Text style={styles.lexiconRankSub}>
-                You earned +20 XP. You have reached 80% completion of the Executive Negotiator tier!
+                {`Your vocabulary + clarity improved based on your conversation. Keep practicing daily.`}
               </Text>
             </View>
           </View>
@@ -790,7 +902,7 @@ export default function VoiceSessionScreen() {
             </Pressable>
             <View style={styles.summaryTextCol}>
               <Text style={styles.summaryBubbleText}>
-                "You demonstrated strong structure in this session. Your choice of phrasing when addressing compensation was polite but firm. Continuing to practice with phrases like 'Scope of Impact' will make your future reviews highly convincing."
+                {`"${vocabularyFeedback}"`}
               </Text>
             </View>
           </View>
@@ -871,10 +983,10 @@ export default function VoiceSessionScreen() {
 function ImageMascot() {
   return (
     <View style={styles.mascotBg}>
-      <SymbolView
-        name={{ ios: 'waveform.circle.fill', android: 'mic', web: 'mic' }}
-        size={44}
-        tintColor="#FFFFFF"
+      <Image
+        source={require('@/assets/images/avatar.png')}
+        style={styles.mascotImage}
+        accessibilityLabel="Mascot avatar"
       />
     </View>
   );
@@ -1096,6 +1208,11 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.2)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  mascotImage: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
   },
   transcriptSection: {
     flex: 1,
@@ -1366,6 +1483,26 @@ const styles = StyleSheet.create({
     marginTop: -Spacing.two,
     marginBottom: Spacing.two,
   },
+  reportAvatarRow: {
+    alignItems: 'center',
+    marginTop: Spacing.two,
+    marginBottom: -Spacing.one,
+  },
+  reportAvatarWrap: {
+    width: 78,
+    height: 78,
+    borderRadius: 39,
+    backgroundColor: 'rgba(250,250,250,0.80)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(127, 34, 253, 0.18)',
+  },
+  reportAvatar: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+  },
   reportCard: {
     backgroundColor: Brand.cardBg,
     borderRadius: Radius.lg,
@@ -1534,6 +1671,13 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Brand.primaryDark,
     fontWeight: '600',
+  },
+  gapExplanationText: {
+    marginTop: Spacing.one,
+    fontSize: 12,
+    color: Brand.grayText,
+    lineHeight: 16,
+    fontStyle: 'italic',
   },
   saveVaultPill: {
     flexDirection: 'row',

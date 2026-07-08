@@ -29,6 +29,11 @@ const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz012345
 const BASE64_LUT: number[] = new Array(256).fill(-1);
 for (let i = 0; i < BASE64_CHARS.length; i++) BASE64_LUT[BASE64_CHARS.charCodeAt(i)] = i;
 
+function generateVoiceSessionId(): string {
+  // Stable-ish ID for analytics_reports linking.
+  return `vs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 9)}`;
+}
+
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let result = '';
@@ -82,7 +87,7 @@ function uint8ArrayToBase64(bytes: Uint8Array): string {
 }
 
 // ─── PCM → WAV container (44-byte RIFF/WAV header) ─────────────────────────────
-function pcmBase64ToWavBase64(pcmBase64: string, sampleRate = 24000): string {
+function pcmBase64ToWavBase64(pcmBase64: string, sampleRate = 16000): string {
   try {
     const pcmBytes = base64ToUint8Array(pcmBase64);
     const pcmLength = pcmBytes.length;
@@ -134,6 +139,7 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
   const reconnectAttemptsRef = useRef(0);
   const maxReconnectAttempts = 3;
   const receivedChunksRef = useRef(0);
+  const playTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // ── Part A: Recorder state machine ──────────────────────────────────
   const recorderStateRef = useRef<RecorderState>('idle');
@@ -179,8 +185,13 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
     channels: 1,
     encoding: 'int16',
     onBuffer: (buffer) => {
-      // Send raw PCM ArrayBuffer over WebSocket directly
-      if (socketSendRef.current) {
+      // ── CRITICAL: Acoustic echo prevention ────────────────────────────
+      // Do NOT stream mic PCM to the server while the AI is playing audio
+      // through the phone speaker. The speaker audio bleeds into the mic,
+      // and Gemini's own VAD detects it as "user speech", causing it to
+      // interrupt itself in an infinite barge-in loop.
+      // Only send mic audio when the AI is silent (not playing).
+      if (socketSendRef.current && !isPlayingRef.current) {
         socketSendRef.current(buffer.data);
       }
 
@@ -194,11 +205,12 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
       const norm = Math.min(1, rms / 6000);
       setAmplitude(norm);
 
-      const isSpeaking = norm > 0.15;
+      // Threshold of 0.38 filters background noise & room echo.
+      // 0.15 was too low — any ambient sound triggered barge-in.
+      const isSpeaking = norm > 0.38;
       if (isSpeaking && !userSpeakingRef.current) {
         setUserSpeaking(true);
         propsRef.current.onSpeechStart?.();
-        handleBargeInRef.current();
       } else if (!isSpeaking && userSpeakingRef.current) {
         setUserSpeaking(false);
         propsRef.current.onSpeechEnd?.();
@@ -257,6 +269,10 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
     }
 
     // Release playback
+    if (playTimeoutRef.current) {
+      clearTimeout(playTimeoutRef.current);
+      playTimeoutRef.current = null;
+    }
     if (currentSoundRef.current) {
       try { currentSoundRef.current.remove(); } catch (_) {}
       currentSoundRef.current = null;
@@ -267,6 +283,20 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
   }, [transitionState]);
 
   // ── Playback ─────────────────────────────────────────────────────────
+  // Strategy: backend buffers Gemini PCM parts and sends fewer, larger segments.
+  // We play one queued segment at a time (no additional chunk-merging here).
+  const triggerPlayWithJitterBuffer = useCallback(() => {
+    if (isPlayingRef.current) return;
+    if (playTimeoutRef.current) return; // Already scheduled
+
+    // Small delay to let the first segment accumulate, without causing extra
+    // per-chunk file transitions.
+    playTimeoutRef.current = setTimeout(() => {
+      playTimeoutRef.current = null;
+      playNextChunk();
+    }, 120);
+  }, []);
+
   const playNextChunk = useCallback(async () => {
     if (audioQueueRef.current.length === 0) {
       isPlayingRef.current = false;
@@ -281,15 +311,19 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
     setAiSpeaking(true);
     propsRef.current.onAiSpeechStart?.();
 
+    // Play a single queued segment (PCM base64 already merged server-side).
     const pcmBase64 = audioQueueRef.current.shift();
-    if (!pcmBase64) { isPlayingRef.current = false; return; }
+    if (!pcmBase64) {
+      isPlayingRef.current = false;
+      return;
+    }
 
     try {
-      // Gemini returns raw 16-bit PCM at 24kHz — wrap in WAV container
-      const wavBase64 = pcmBase64ToWavBase64(pcmBase64, 24000);
+      // PCM base64 → WAV base64 (server sends int16 PCM @ 16kHz).
+      const wavBase64 = pcmBase64ToWavBase64(pcmBase64, 16000);
 
       const cacheDir = FileSystem.cacheDirectory ?? FileSystem.documentDirectory ?? '';
-      const fileUri = `${cacheDir}ai_chunk_${Date.now()}.wav`;
+      const fileUri = `${cacheDir}ai_segment_${Date.now()}.wav`;
       await FileSystem.writeAsStringAsync(fileUri, wavBase64, {
         encoding: FileSystem.EncodingType.Base64,
       });
@@ -311,6 +345,7 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
           isPlayingRef.current = false;
           FileSystem.deleteAsync(fileUri, { idempotent: true }).catch(() => {});
           sub.remove();
+          // Play next batch (chunks that arrived while we were playing)
           playNextChunk();
         }
       });
@@ -324,6 +359,10 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
 
   // ── Barge-in ──────────────────────────────────────────────────────────
   const handleBargeIn = useCallback(() => {
+    if (playTimeoutRef.current) {
+      clearTimeout(playTimeoutRef.current);
+      playTimeoutRef.current = null;
+    }
     if (isPlayingRef.current || audioQueueRef.current.length > 0) {
       audioQueueRef.current = [];
       isPlayingRef.current = false;
@@ -400,7 +439,7 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
   }, [cleanupAudio]);
 
   // ── Connect ───────────────────────────────────────────────────────────
-  const connect = useCallback(async (caseStudyId: string) => {
+  const connect = useCallback(async (caseStudyId: string, sessionId?: string) => {
     console.log('[connect] Starting. Current status:', statusRef.current);
 
     // Always fully clean up before re-connecting
@@ -423,8 +462,17 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
       console.warn('[connect] Failed to retrieve auth token:', tokenErr);
     }
 
-    const wsUrl = `${gatewayUrl}?caseStudyId=${caseStudyId}${accessToken ? `&token=${accessToken}` : ''}`;
-    console.log('[connect] WS URL (no token shown):', gatewayUrl + `?caseStudyId=${caseStudyId}&token=<redacted>`);
+    const voiceSessionId = sessionId ?? generateVoiceSessionId();
+
+    const wsUrl =
+      `${gatewayUrl}?caseStudyId=${encodeURIComponent(caseStudyId)}` +
+      `&sessionId=${encodeURIComponent(voiceSessionId)}` +
+      `${accessToken ? `&token=${accessToken}` : ''}`;
+
+    console.log(
+      '[connect] WS URL (no token shown):',
+      gatewayUrl + `?caseStudyId=${caseStudyId}&sessionId=<redacted>&token=<redacted>`,
+    );
 
     const setupSocket = () => {
       console.log('[setupSocket] Connecting to:', wsUrl);
@@ -451,10 +499,10 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
           if (data.event === 'audio') {
             receivedChunksRef.current += 1;
             if (receivedChunksRef.current % 20 === 0) {
-              console.log(`[WebSocket] Received ${receivedChunksRef.current} audio chunks`);
+              console.log(`[WebSocket] Received ${receivedChunksRef.current} audio segments`);
             }
             audioQueueRef.current.push(data.payload.base64);
-            if (!isPlayingRef.current) playNextChunk();
+            if (!isPlayingRef.current) triggerPlayWithJitterBuffer();
           } else if (data.event === 'transcript') {
             const { text, sender, isFinal } = data.payload;
             const role = sender === 'user' ? 'user' : 'ai';
@@ -487,10 +535,13 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
       ws.onclose = (e) => {
         console.log(`[WebSocket] Closed. Code=${e.code}, Reason=${e.reason}`);
         socketSendRef.current = null;
-        if (
-          statusRef.current === 'connected' &&
-          reconnectAttemptsRef.current < maxReconnectAttempts
-        ) {
+        const canReconnect =
+          (statusRef.current === 'connected' ||
+            statusRef.current === 'connecting' ||
+            statusRef.current === 'reconnecting') &&
+          reconnectAttemptsRef.current < maxReconnectAttempts;
+
+        if (canReconnect) {
           setStatus('reconnecting');
           reconnectAttemptsRef.current += 1;
           setTimeout(setupSocket, 2000);
@@ -503,6 +554,7 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
 
     setupSocket();
     await startRecording();
+    return voiceSessionId;
   }, [disconnect, startRecording, playNextChunk, handleBargeIn]);
 
   // ── Metering from recorder (fallback amplitude when stream not running) ──
@@ -517,14 +569,13 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
         if (isSpeaking && !userSpeakingRef.current) {
           setUserSpeaking(true);
           propsRef.current.onSpeechStart?.();
-          handleBargeIn();
         } else if (!isSpeaking && userSpeakingRef.current) {
           setUserSpeaking(false);
           propsRef.current.onSpeechEnd?.();
         }
       }
     }
-  }, [recorderState.isRecording, recorderState.metering, handleBargeIn]);
+  }, [recorderState.isRecording, recorderState.metering]);
 
   // ── Text message helper ───────────────────────────────────────────────
   const sendMessage = useCallback((text: string) => {
