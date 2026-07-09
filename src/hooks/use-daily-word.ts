@@ -8,14 +8,14 @@
  *  4. Persist mastery responses immediately per word (not batched)
  *  5. Calculate SRS intervals locally (SM-2 algorithm) and sync to backend
  *
- * Backend contract (assumed — not yet confirmed):
+ * Backend contract:
  *   GET  /api/v1/vocab-vault/session?limit=N&lang=LANG
- *        → { words: DailyWord[] }
+ *        → { words: DailyWord[] } (includes audioUrl, slowAudioUrl, exampleAudioUrl)
  *   POST /api/v1/vocab-vault/:id/review
  *        Body: { response: 'got_it' | 'still_learning', userId: string }
  *        → { next_review_at: string, srs_interval_days: number }
  *   GET  /api/v1/vocab-vault/pronunciation?wordId=WORD_ID&speed=normal|slow
- *        → { audioUrl: string }
+ *        → { audioUrl: string } (on-demand fallback when session URLs are missing)
  *
  * If the network request fails or the endpoint is unavailable, the hook falls
  * back to CURATED_MOCK_WORDS so the screen always has something to show in dev.
@@ -32,8 +32,9 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 /** How many words to show per daily session. Tune this without a code change. */
 export const DAILY_SESSION_SIZE = 5;
 
-const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.pravabloy.ai';
-const CACHE_KEY_PREFIX = 'daily_word_session_v1';
+export const API_BASE =
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.pravabloy.ai';
+const CACHE_KEY_PREFIX = 'daily_word_session_v2';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,6 +63,12 @@ export type DailyWord = {
   usageTip: string;
   /** Source: 'curated' = fresh word, 'vault' = from user's vocab_vault (SRS due) */
   source: 'curated' | 'vault';
+  /** Pre-synthesized pronunciation (normal speed) from session API */
+  audioUrl?: string;
+  /** Pre-synthesized pronunciation (slow speed) from session API */
+  slowAudioUrl?: string;
+  /** Pre-synthesized example sentence audio from session API */
+  exampleAudioUrl?: string;
   /** Current SRS interval in days before this word was reviewed */
   srsIntervalDays: number;
   /** SM-2 ease factor */
@@ -86,10 +93,13 @@ export type UseDailyWordResult = {
   totalWords: number;
   /** Submit a mastery response for the current word and advance to the next */
   submitResponse: (response: MasteryResponse) => Promise<void>;
-  /** Build the TTS audio URL for a word (pronunciation) */
-  getPronunciationUrl: (wordId: string, speed?: 'normal' | 'slow') => string;
-  /** Build the TTS audio URL for an example sentence */
-  getExampleAudioUrl: (wordId: string) => string;
+  /** Resolve a direct MP3 URL for word pronunciation (session URL or on-demand API) */
+  resolveWordAudioUrl: (
+    word: DailyWord,
+    speed?: 'normal' | 'slow',
+  ) => Promise<string>;
+  /** Resolve a direct MP3 URL for the example sentence (session URL or on-demand API) */
+  resolveExampleAudioUrl: (word: DailyWord) => Promise<string>;
   error: string | null;
 };
 
@@ -203,6 +213,105 @@ const CURATED_MOCK_WORDS: DailyWord[] = [
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
+function youdaoWordUrl(text: string): string {
+  return `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(text)}&type=2`;
+}
+
+function normalizeSessionWord(raw: Record<string, unknown>): DailyWord {
+  const partOfSpeech =
+    (raw.partOfSpeech as PartOfSpeech | undefined) ??
+    (raw.part_of_speech as PartOfSpeech | undefined) ??
+    'noun';
+
+  return {
+    id: String(raw.id ?? ''),
+    word: String(raw.word ?? ''),
+    phonetic: String(raw.phonetic ?? ''),
+    partOfSpeech,
+    definition: String(raw.definition ?? ''),
+    exampleSentence: String(
+      raw.exampleSentence ?? raw.example_sentence ?? '',
+    ),
+    usageTip: String(raw.usageTip ?? raw.usage_tip ?? ''),
+    source: (raw.source as DailyWord['source']) ?? 'curated',
+    audioUrl:
+      (raw.audioUrl as string | undefined) ??
+      (raw.word_audio_url as string | undefined),
+    slowAudioUrl:
+      (raw.slowAudioUrl as string | undefined) ??
+      (raw.slow_word_audio_url as string | undefined),
+    exampleAudioUrl:
+      (raw.exampleAudioUrl as string | undefined) ??
+      (raw.example_audio_url as string | undefined),
+    srsIntervalDays: Number(raw.srsIntervalDays ?? raw.srs_interval_days ?? 1),
+    srsEaseFactor: Number(raw.srsEaseFactor ?? raw.srs_ease_factor ?? 2.5),
+  };
+}
+
+async function fetchPronunciationAudioUrl(params: {
+  wordId?: string;
+  text?: string;
+  speed?: 'normal' | 'slow';
+  type?: 'word' | 'example';
+  lang?: string;
+}): Promise<string> {
+  const query = new URLSearchParams();
+  if (params.wordId) query.set('wordId', params.wordId);
+  if (params.text) query.set('text', params.text);
+  if (params.speed) query.set('speed', params.speed);
+  if (params.type) query.set('type', params.type);
+  if (params.lang) query.set('lang', params.lang);
+  query.set('format', 'json');
+
+  const res = await fetch(
+    `${API_BASE}/api/v1/vocab-vault/pronunciation?${query.toString()}`,
+  );
+  if (!res.ok) {
+    throw new Error(`Pronunciation fetch failed: ${res.status}`);
+  }
+  const json = (await res.json()) as { audioUrl?: string };
+  if (!json.audioUrl) {
+    throw new Error('Pronunciation response missing audioUrl');
+  }
+  return json.audioUrl;
+}
+
+export async function resolveWordAudioUrl(
+  word: DailyWord,
+  speed: 'normal' | 'slow' = 'normal',
+  lang = 'en',
+): Promise<string> {
+  const sessionUrl = speed === 'slow' ? word.slowAudioUrl : word.audioUrl;
+  if (sessionUrl) return sessionUrl;
+
+  if (word.id.startsWith('mock-')) {
+    return youdaoWordUrl(word.word);
+  }
+
+  return fetchPronunciationAudioUrl({ wordId: word.id, speed, lang });
+}
+
+export async function resolveExampleAudioUrl(
+  word: DailyWord,
+  lang = 'en',
+): Promise<string> {
+  if (word.exampleAudioUrl) return word.exampleAudioUrl;
+
+  if (word.id.startsWith('mock-')) {
+    try {
+      return await fetchPronunciationAudioUrl({
+        text: word.exampleSentence,
+        type: 'example',
+        lang,
+      });
+    } catch {
+      return youdaoWordUrl(word.word);
+    }
+  }
+
+  return fetchPronunciationAudioUrl({ wordId: word.id, type: 'example', lang });
+}
+
 async function fetchSessionFromAPI(
   userId: string,
   lang: string,
@@ -215,8 +324,8 @@ async function fetchSessionFromAPI(
   if (!res.ok) {
     throw new Error(`Session fetch failed: ${res.status}`);
   }
-  const json = (await res.json()) as { words: DailyWord[] };
-  return json.words;
+  const json = (await res.json()) as { words: Record<string, unknown>[] };
+  return json.words.map(normalizeSessionWord);
 }
 
 async function postReview(
@@ -280,11 +389,12 @@ export function useDailyWord(): UseDailyWordResult {
         const cached = await AsyncStorage.getItem(key);
         if (cached) {
           const parsed = JSON.parse(cached) as {
-            words: DailyWord[];
+            words: Record<string, unknown>[];
             currentIndex: number;
           };
           if (!cancelled && parsed.words.length > 0) {
-            setWords(parsed.words);
+            const normalizedWords = parsed.words.map(normalizeSessionWord);
+            setWords(normalizedWords);
             setCurrentIndex(parsed.currentIndex ?? 0);
             setStatus(
               parsed.currentIndex >= parsed.words.length ? 'complete' : 'ready',
@@ -378,18 +488,18 @@ export function useDailyWord(): UseDailyWordResult {
     [words, currentIndex, status, userId],
   );
 
-  // ─── Audio URL helpers ──────────────────────────────────────────────────────
+  // ─── Audio URL resolvers ────────────────────────────────────────────────────
 
-  const getPronunciationUrl = useCallback(
-    (wordId: string, speed: 'normal' | 'slow' = 'normal'): string => {
-      return `${API_BASE}/api/v1/vocab-vault/pronunciation?wordId=${encodeURIComponent(wordId)}&speed=${speed}`;
-    },
-    [],
+  const resolveWordAudioUrlForWord = useCallback(
+    (word: DailyWord, speed: 'normal' | 'slow' = 'normal') =>
+      resolveWordAudioUrl(word, speed, lang),
+    [lang],
   );
 
-  const getExampleAudioUrl = useCallback((wordId: string): string => {
-    return `${API_BASE}/api/v1/vocab-vault/pronunciation?wordId=${encodeURIComponent(wordId)}&type=example`;
-  }, []);
+  const resolveExampleAudioUrlForWord = useCallback(
+    (word: DailyWord) => resolveExampleAudioUrl(word, lang),
+    [lang],
+  );
 
   return {
     status,
@@ -398,8 +508,8 @@ export function useDailyWord(): UseDailyWordResult {
     currentWord: words[currentIndex] ?? null,
     totalWords: words.length,
     submitResponse,
-    getPronunciationUrl,
-    getExampleAudioUrl,
+    resolveWordAudioUrl: resolveWordAudioUrlForWord,
+    resolveExampleAudioUrl: resolveExampleAudioUrlForWord,
     error,
   };
 }

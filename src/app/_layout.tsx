@@ -4,6 +4,7 @@ import { useColorScheme } from 'react-native';
 import { useEffect } from 'react';
 
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
+import { StreakActivityRecorder } from '@/components/StreakActivityRecorder';
 import { AuthProvider, useAuth } from '@/context/auth-context';
 
 SplashScreen.preventAutoHideAsync();
@@ -35,6 +36,7 @@ function RootLayoutNav() {
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <AnimatedSplashOverlay />
+      <StreakActivityRecorder />
       <Slot />
     </ThemeProvider>
   );

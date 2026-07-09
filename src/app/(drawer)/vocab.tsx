@@ -47,8 +47,8 @@ export default function VocabVaultScreen() {
     currentWord,
     totalWords,
     submitResponse,
-    getPronunciationUrl,
-    getExampleAudioUrl,
+    resolveWordAudioUrl,
+    resolveExampleAudioUrl,
   } = useDailyWord();
 
   const streakCount = profile?.streak_count ?? 0;
@@ -98,21 +98,30 @@ export default function VocabVaultScreen() {
     }
   };
 
-  const handlePlayWordAudio = (speed: 'normal' | 'slow' = 'normal') => {
+  const handlePlayWordAudio = async (speed: 'normal' | 'slow' = 'normal') => {
     if (!currentWord) return;
-    // For local mock data fallback, we use web-safe public pronunciation files or TTS proxies
-    const url = currentWord.id.startsWith('mock-')
-      ? `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(currentWord.word)}&type=2`
-      : getPronunciationUrl(currentWord.id, speed);
-    playSound(url, 'word');
+    try {
+      const url = await resolveWordAudioUrl(currentWord, speed);
+      await playSound(url, 'word');
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[VocabVaultScreen] Word audio resolve failed:', error);
+      }
+      setPlayingType(null);
+    }
   };
 
-  const handlePlayExampleAudio = () => {
+  const handlePlayExampleAudio = async () => {
     if (!currentWord) return;
-    const url = currentWord.id.startsWith('mock-')
-      ? `https://dict.youdao.com/dictvoice?audio=${encodeURIComponent(currentWord.exampleSentence)}&type=2`
-      : getExampleAudioUrl(currentWord.id);
-    playSound(url, 'example');
+    try {
+      const url = await resolveExampleAudioUrl(currentWord);
+      await playSound(url, 'example');
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[VocabVaultScreen] Example audio resolve failed:', error);
+      }
+      setPlayingType(null);
+    }
   };
 
   const handleGoHome = () => {

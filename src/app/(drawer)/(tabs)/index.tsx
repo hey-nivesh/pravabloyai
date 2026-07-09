@@ -1,31 +1,26 @@
 import { type ComponentProps } from 'react';
-import { Image } from 'expo-image';
-import { SymbolView } from 'expo-symbols';
+import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter, useNavigation } from 'expo-router';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DrawerNavigationProp } from '@react-navigation/drawer';
 
 import { BentoGrid } from '@/components/home/BentoGrid';
 import { BentoTile } from '@/components/home/BentoTile';
 import { HeroBanner } from '@/components/home/HeroBanner';
+import { HomeGreeting } from '@/components/home/HomeGreeting';
+import { HomeStatsRow } from '@/components/home/HomeStatsRow';
 import { RecentActivityCard, RecentActivityCardSkeleton } from '@/components/home/RecentActivityCard';
 import { Skeleton } from '@/components/home/Skeleton';
-import { StreakBadge } from '@/components/home/StreakBadge';
-import { WeeklyProgressStrip } from '@/components/home/WeeklyProgressStrip';
+import { TodayGoalsCard } from '@/components/home/TodayGoalsCard';
+import { DailyChallengeEntryCard } from '@/components/gamification/DailyChallengeEntryCard';
+import { JourneyMapEntryCard } from '@/components/gamification/JourneyMapEntryCard';
+import { StatusHeader } from '@/components/gamification/StatusHeader';
 import { Brand, BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { useProgressSummary } from '@/hooks/useProgressSummary';
 import { useUserProfile, getFirstName } from '@/hooks/useUserProfile';
 import { useRecentSession } from '@/hooks/use-recent-session';
+import { useTodayPracticeStats } from '@/hooks/useTodayPracticeStats';
 
-type SymbolName = ComponentProps<typeof SymbolView>['name'];
-
-// ─── Icon constants (typed to avoid inference errors) ────────────────────────
-
-const ICON_MENU: SymbolName = { ios: 'line.horizontal.3', android: 'menu', web: 'menu' };
-const ICON_BELL: SymbolName = { ios: 'bell.fill', android: 'notifications', web: 'notifications' };
-
-// ─── Practice Modes data ─────────────────────────────────────────────────────
+type SymbolName = ComponentProps<typeof BentoTile>['icon'];
 
 const PRACTICE_MODES: ReadonlyArray<{
   id: string;
@@ -61,8 +56,6 @@ const PRACTICE_MODES: ReadonlyArray<{
   },
 ];
 
-// ─── Your Tools data ─────────────────────────────────────────────────────────
-
 const YOUR_TOOLS: ReadonlyArray<{
   id: string;
   label: string;
@@ -80,7 +73,7 @@ const YOUR_TOOLS: ReadonlyArray<{
     href: '/vocab',
   },
   {
-    id: 'progress Report',
+    id: 'progress',
     label: 'Progress Report',
     icon: { ios: 'chart.line.uptrend.xyaxis', android: 'trending_up', web: 'trending_up' },
     iconBgColor: Brand.primaryBadgeBg,
@@ -121,26 +114,25 @@ const YOUR_TOOLS: ReadonlyArray<{
   },
 ];
 
-// ─── Screen ───────────────────────────────────────────────────────────────────
-
 export default function HomeScreen() {
   const router = useRouter();
   const navigation = useNavigation<DrawerNavigationProp<any>>();
   const insets = useSafeAreaInsets();
   const { user, profile, loading: isUserLoading } = useUserProfile();
   const sessionResult = useRecentSession();
-  const { loading: progressLoading, summary: progressSummary, error: progressError } = useProgressSummary();
+  const {
+    minutesToday,
+    totalMinutes,
+    sessionsCompleted,
+    loading: statsLoading,
+  } = useTodayPracticeStats();
 
   const firstName = getFirstName(profile, user?.email) || 'there';
-  const streakCount = profile?.streak_count ?? 0;
-
-  // Android handles its own top inset via system bars — apply it manually on Android only.
   const topPadding = Platform.OS === 'android' ? insets.top : insets.top + Spacing.two;
   const bottomPadding = insets.bottom + BottomTabInset + Spacing.five;
 
   return (
     <View style={styles.root}>
-      {/* Soft purple-to-white gradient background */}
       <View style={[StyleSheet.absoluteFill, styles.gradientBg]} />
 
       <ScrollView
@@ -152,59 +144,13 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.inner}>
+          <StatusHeader showMenu onMenuPress={() => navigation.openDrawer()} />
 
-          {/* ── 1. Header ───────────────────────────────────────────────── */}
-          <View style={styles.header}>
-            {/* Hamburger / menu icon */}
-            <Pressable
-              onPress={() => navigation.openDrawer()}
-              style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
-              accessibilityRole="button"
-              accessibilityLabel="Open menu"
-            >
-              <SymbolView name={ICON_MENU} size={18} tintColor={Brand.primaryDark} />
-            </Pressable>
+          <HomeGreeting firstName={firstName} loading={isUserLoading} />
 
-            {/* Logo mark + greeting */}
-            <View style={styles.logoGreeting}>
-              <Image
-                source={require('@/assets/images/avatar.png')}
-                style={styles.logoMark}
-                contentFit="contain"
-                accessibilityLabel="PravabloyAI logo"
-              />
-              {isUserLoading ? (
-                <Skeleton width={100} height={16} borderRadius={Radius.sm} />
-              ) : (
-                <Text style={styles.greeting} numberOfLines={1}>
-                  Hi, {firstName} 👋
-                </Text>
-              )}
-            </View>
-
-            {/* Streak badge + notification bell */}
-            <View style={styles.rightActions}>
-              {isUserLoading ? (
-                <Skeleton width={56} height={28} borderRadius={Radius.md} />
-              ) : (
-                <StreakBadge count={streakCount} />
-              )}
-
-              <Pressable
-                onPress={() => router.push('/notifications' as never)}
-                style={({ pressed }) => [styles.iconBtn, pressed && styles.iconBtnPressed]}
-                accessibilityRole="button"
-                accessibilityLabel="Notifications"
-              >
-                <SymbolView name={ICON_BELL} size={18} tintColor={Brand.primaryDark} />
-              </Pressable>
-            </View>
-          </View>
-
-          {/* ── 2. Hero Banner ──────────────────────────────────────────── */}
           {isUserLoading ? (
             <View style={styles.heroSkeletonWrapper}>
-              <Skeleton height={172} borderRadius={Radius.xl} />
+              <Skeleton height={168} borderRadius={Radius.xl} />
             </View>
           ) : (
             <HeroBanner
@@ -213,13 +159,22 @@ export default function HomeScreen() {
             />
           )}
 
-          <WeeklyProgressStrip
-            loading={progressLoading}
-            summary={progressSummary}
-            error={progressError}
+          <TodayGoalsCard
+            minutesToday={minutesToday}
+            streakCount={profile?.streak_count ?? 0}
+            xpTotal={profile?.xp_total ?? 0}
+            loading={isUserLoading || statsLoading}
           />
 
-          {/* ── 3. Practice Modes bento grid ────────────────────────────── */}
+          <HomeStatsRow
+            totalMinutes={totalMinutes}
+            sessionsCompleted={sessionsCompleted}
+            loading={statsLoading}
+          />
+
+          <DailyChallengeEntryCard />
+          <JourneyMapEntryCard />
+
           <BentoGrid title="Practice Modes" seeAllHref="/practice" expandInline={false}>
             {PRACTICE_MODES.map((mode) => (
               <BentoTile
@@ -234,7 +189,6 @@ export default function HomeScreen() {
             ))}
           </BentoGrid>
 
-          {/* ── 4. Your Tools bento grid ────────────────────────────────── */}
           <BentoGrid title="Your Tools" seeAllHref="/tools" collapsedCount={3} expandInline>
             {YOUR_TOOLS.map((tool) => (
               <BentoTile
@@ -249,23 +203,19 @@ export default function HomeScreen() {
             ))}
           </BentoGrid>
 
-          {/* ── 5. Continue / Recent Activity ───────────────────────────── */}
           <View style={styles.recentSection}>
-            <Text style={styles.sectionTitle}>Continue</Text>
+            <Text style={styles.sectionTitle}>Active Practice</Text>
             {sessionResult.status === 'loading' ? (
               <RecentActivityCardSkeleton />
             ) : (
               <RecentActivityCard session={sessionResult.session} />
             )}
           </View>
-
         </View>
       </ScrollView>
     </View>
   );
 }
-
-// ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
   root: {
@@ -273,14 +223,11 @@ const styles = StyleSheet.create({
     backgroundColor: Brand.bgGradientStart,
   },
   gradientBg: {
-    // Same technique as animated-icon.tsx already in this project (RN 0.76+ / Expo SDK 57)
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
     experimental_backgroundImage: `linear-gradient(160deg, ${Brand.bgGradientStart} 0%, ${Brand.bgGradientEnd} 65%)`,
   },
-  scroll: {
-    flex: 1,
-  },
+  scroll: { flex: 1 },
   contentContainer: {
     flexGrow: 1,
     flexDirection: 'row',
@@ -291,63 +238,9 @@ const styles = StyleSheet.create({
     maxWidth: MaxContentWidth,
     gap: Spacing.four,
   },
-
-  // ── Header ────────────────────────────────────────────────────────────────
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: Spacing.three,
-    gap: Spacing.two,
-  },
-  iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Brand.cardBg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    flexShrink: 0,
-    shadowColor: Brand.shadowColor,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.10,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  iconBtnPressed: {
-    opacity: 0.75,
-  },
-  logoGreeting: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    marginLeft: Spacing.one,
-    overflow: 'hidden',
-  },
-  logoMark: {
-    width: 32,
-    height: 32,
-    flexShrink: 0,
-  },
-  greeting: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: Brand.primaryDark,
-    flexShrink: 1,
-  },
-  rightActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    flexShrink: 0,
-  },
-
-  // ── Hero skeleton ──────────────────────────────────────────────────────────
   heroSkeletonWrapper: {
     marginHorizontal: Spacing.three,
   },
-
-  // ── Continue section ───────────────────────────────────────────────────────
   recentSection: {
     gap: Spacing.two + 2,
     paddingBottom: Spacing.two,

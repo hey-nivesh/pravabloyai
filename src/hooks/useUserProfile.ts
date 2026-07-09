@@ -24,6 +24,8 @@ export type UserProfileRow = {
   avatar_public_id: string | null;
   subscription_tier: 'free' | 'pro' | string;
   streak_count: number;
+  xp_total: number;
+  xp_level: number;
   created_at: string; // ISO timestamp — shown as "Member since …"
   /**
    * BCP-47 language tag for vocab explanation language.
@@ -63,7 +65,7 @@ export function useUserProfile(): UseUserProfileResult {
     const { data, error } = await supabase
       .from('users')
       .select(
-        'id, full_name, avatar_url, avatar_public_id, subscription_tier, streak_count, created_at, preferred_explanation_language',
+        'id, full_name, avatar_url, avatar_public_id, subscription_tier, streak_count, xp_total, xp_level, created_at, preferred_explanation_language',
       )
       .eq('id', uid)
       .single();

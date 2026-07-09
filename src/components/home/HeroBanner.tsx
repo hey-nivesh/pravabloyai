@@ -8,55 +8,42 @@ import { Brand, Radius, Spacing } from '@/constants/theme';
 type SymbolName = ComponentProps<typeof SymbolView>['name'];
 
 type HeroBannerProps = {
-  /** First name shown in the greeting — e.g. "Alex" */
   greetingName: string;
-  /** Called when the "Start Speaking" CTA is tapped */
   onStartPress: () => void;
 };
 
-/**
- * Full-width hero banner card on the Home screen.
- *
- * - Purple gradient background (primary → primaryDark) via experimental_backgroundImage
- * - Floating mascot asset overlapping the bottom-right edge for a 3D-depth effect
- * - Inner highlight layer simulates a raised/lifted 3D surface
- * - White pill CTA button that calls onStartPress to navigate to the practice picker
- */
-export function HeroBanner({ greetingName, onStartPress }: HeroBannerProps) {
+export function HeroBanner({ onStartPress }: HeroBannerProps) {
   const micIcon: SymbolName = { ios: 'mic.fill', android: 'mic', web: 'mic' };
 
   return (
     <View style={styles.card}>
-      {/* Purple gradient background */}
       <View style={styles.gradientBg} />
-
-      {/* Inner highlight layer — simulates a 3D "raised" surface */}
       <View style={styles.innerHighlight} />
 
-      {/* Content column */}
       <View style={styles.content}>
-        <Text style={styles.greeting}>Hey {greetingName}! 🎙️</Text>
-        <Text style={styles.heading}>Ready to practice{'\n'}speaking today?</Text>
-        <Text style={styles.subtext}>5 minutes a day builds real fluency.</Text>
+        <Text style={styles.kicker}>AI Fluency Coach</Text>
+        <Text style={styles.heading}>Learn Smarter with{'\n'}AI-Powered Guidance</Text>
+        <Text style={styles.subtext}>
+          Real-time voice practice tailored to your goals.
+        </Text>
 
         <Pressable
           style={({ pressed }) => [styles.ctaButton, pressed && styles.ctaButtonPressed]}
           onPress={onStartPress}
           accessibilityRole="button"
-          accessibilityLabel="Start Speaking — open scenario picker"
+          accessibilityLabel="Start with AI — open scenario picker"
         >
-          <SymbolView name={micIcon} size={16} tintColor={Brand.primary} />
-          <Text style={styles.ctaLabel}>Start Speaking</Text>
+          <SymbolView name={micIcon} size={16} tintColor="#FFFFFF" />
+          <Text style={styles.ctaLabel}>Start with AI</Text>
         </Pressable>
       </View>
 
-      {/* Floating mascot — overlaps the bottom-right edge for depth */}
       <View style={styles.mascotContainer} pointerEvents="none">
         <Image
-          source={require('@/assets/images/avatar.png')}
+          source={require('@/assets/images/coach-explaining.png')}
           style={styles.mascot}
           contentFit="contain"
-          accessibilityLabel="PravabloyAI mascot"
+          accessibilityLabel="PravabloyAI coach"
         />
       </View>
     </View>
@@ -66,12 +53,12 @@ export function HeroBanner({ greetingName, onStartPress }: HeroBannerProps) {
 const styles = StyleSheet.create({
   card: {
     borderRadius: Radius.xl,
-    overflow: 'visible',
+    overflow: 'hidden',
     marginHorizontal: Spacing.three,
-    minHeight: 172,
+    minHeight: 168,
     shadowColor: Brand.shadowColor,
     shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.22,
+    shadowOpacity: 0.2,
     shadowRadius: 20,
     elevation: 8,
   },
@@ -79,43 +66,46 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     borderRadius: Radius.xl,
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore — experimental_backgroundImage is supported in RN 0.76+ / Expo SDK 57
-    experimental_backgroundImage: `linear-gradient(135deg, ${Brand.primary} 0%, #5e1bc2e2 100%)`,
+    // @ts-ignore
+    experimental_backgroundImage: `linear-gradient(135deg, ${Brand.bgGradientStart} 0%, #DDD6FE 55%, ${Brand.primaryBadgeBg} 100%)`,
+    backgroundColor: Brand.bgGradientStart,
   },
   innerHighlight: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    height: 64,
+    height: 56,
     borderTopLeftRadius: Radius.xl,
     borderTopRightRadius: Radius.xl,
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore
-    experimental_backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 100%)`,
+    experimental_backgroundImage: `linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 100%)`,
   },
   content: {
     padding: Spacing.four,
-    paddingRight: 116,
-    gap: Spacing.one + 2,
+    paddingRight: 130,
+    gap: Spacing.one,
+    zIndex: 1,
   },
-  greeting: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.75)',
-    lineHeight: 18,
+  kicker: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Brand.primary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
   heading: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
-    lineHeight: 28,
+    fontSize: 19,
+    fontWeight: '800',
+    color: Brand.primaryDark,
+    lineHeight: 26,
   },
   subtext: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '500',
-    color: 'rgba(255,255,255,0.75)',
-    lineHeight: 18,
+    color: Brand.grayText,
+    lineHeight: 17,
     marginBottom: Spacing.one,
   },
   ctaButton: {
@@ -123,30 +113,31 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.one + 2,
-    backgroundColor: Brand.cardBg,
-    borderRadius: Radius.md,
-    paddingHorizontal: Spacing.three,
+    backgroundColor: Brand.primaryDark,
+    borderRadius: Radius.full,
+    paddingHorizontal: Spacing.three + 2,
     paddingVertical: Spacing.two + 2,
     marginTop: Spacing.one,
   },
   ctaButtonPressed: {
-    opacity: 0.85,
+    opacity: 0.88,
     transform: [{ scale: 0.97 }],
   },
   ctaLabel: {
     fontSize: 14,
     fontWeight: '700',
-    color: Brand.primary,
+    color: '#FFFFFF',
   },
   mascotContainer: {
     position: 'absolute',
-    right: -10,
-    bottom: -10,
-    width: 124,
-    height: 144,
+    right: -4,
+    bottom: -8,
+    width: 140,
+    height: 160,
+    zIndex: 0,
   },
   mascot: {
-    width: 124,
-    height: 144,
+    width: 140,
+    height: 160,
   },
 });

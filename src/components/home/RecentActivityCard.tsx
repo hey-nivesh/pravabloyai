@@ -58,30 +58,41 @@ export function RecentActivityCard({ session }: RecentActivityCardProps) {
 
   return (
     <View style={styles.cardOuter} accessibilityLabel="Recent activity">
-      <View style={styles.card}>
-        <View style={styles.left}>
-          <View style={[styles.iconBadge, { backgroundColor: badgeBg }]}>
-            <SymbolView name={icon} size={20} tintColor={iconColor} />
+      <View style={styles.activeCard}>
+        <ExpoImage
+          source={require('@/assets/images/coach-explaining.png')}
+          style={styles.activeCoach}
+          contentFit="contain"
+        />
+        <View style={styles.activeBody}>
+          <View style={styles.activeTop}>
+            <View style={[styles.iconBadge, { backgroundColor: badgeBg }]}>
+              <SymbolView name={icon} size={18} tintColor={iconColor} />
+            </View>
+            <View style={styles.ratingPill}>
+              <Text style={styles.ratingText}>● Live</Text>
+            </View>
           </View>
-        </View>
-
-        <View style={styles.body}>
-          <Text style={styles.modeName} numberOfLines={1}>
+          <Text style={styles.activeTitle} numberOfLines={2}>
             {session.modeName}
           </Text>
-          <Text style={styles.meta}>
-            {formatRelativeDate(session.completedAt)} · {durationMin} min
+          <Text style={styles.activeMeta}>
+            {formatRelativeDate(session.completedAt)} · {durationMin} min practice
           </Text>
         </View>
-
         <Pressable
-          style={({ pressed }) => [styles.resumeBtn, pressed && styles.resumeBtnPressed]}
-          onPress={() => router.push(`/analytics/${session.analyticsReportId}` as never)}
+          style={({ pressed }) => [styles.fab, pressed && styles.resumeBtnPressed]}
+          onPress={() => {
+            if (session.analyticsReportId) {
+              router.push(`/analytics/${session.analyticsReportId}` as never);
+            } else {
+              router.push('/history' as never);
+            }
+          }}
           accessibilityRole="button"
-          accessibilityLabel={`Resume insights for ${session.modeName}`}
+          accessibilityLabel={`View insights for ${session.modeName}`}
         >
-          <Text style={styles.resumeLabel}>Insights</Text>
-          <SymbolView name={CHEVRON_ICON} size={11} tintColor={Brand.primary} />
+          <SymbolView name={CHEVRON_ICON} size={16} tintColor={Brand.primaryDark} />
         </Pressable>
       </View>
     </View>
@@ -181,6 +192,74 @@ const styles = StyleSheet.create({
       default: 'rgba(255,255,255,0.75)',
     }),
     borderCurve: 'continuous',
+  },
+  activeCard: {
+    backgroundColor: Brand.primaryBadgeBg,
+    borderRadius: Radius.xl,
+    padding: Spacing.three + 2,
+    minHeight: 130,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(127, 34, 253, 0.12)',
+    position: 'relative',
+  },
+  activeCoach: {
+    position: 'absolute',
+    right: -14,
+    bottom: -10,
+    width: 100,
+    height: 110,
+    opacity: 0.9,
+    zIndex: 0,
+  },
+  activeBody: {
+    paddingRight: 72,
+    gap: Spacing.one,
+  },
+  activeTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: Spacing.one,
+  },
+  ratingPill: {
+    backgroundColor: 'rgba(255,255,255,0.7)',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: 3,
+    borderRadius: Radius.full,
+  },
+  ratingText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Brand.accentGreen,
+  },
+  activeTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: Brand.primaryDark,
+    lineHeight: 22,
+  },
+  activeMeta: {
+    fontSize: 12,
+    color: Brand.grayText,
+    fontWeight: '500',
+  },
+  fab: {
+    position: 'absolute',
+    right: Spacing.three,
+    bottom: Spacing.three,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Brand.cardBg,
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 2,
+    shadowColor: Brand.shadowColor,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 4,
   },
   emptyCard: {
     backgroundColor: Platform.select({

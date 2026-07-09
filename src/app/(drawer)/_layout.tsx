@@ -38,6 +38,8 @@ export default function DrawerLayout() {
       <Drawer.Screen name="subscription" options={{ title: 'Subscription' }} />
       <Drawer.Screen name="privacy" options={{ title: 'Privacy' }} />
       <Drawer.Screen name="help" options={{ title: 'Help' }} />
+      <Drawer.Screen name="daily-challenge" options={{ title: 'Daily Challenge' }} />
+      <Drawer.Screen name="journey-map" options={{ title: 'Fluency Journey' }} />
     </Drawer>
   );
 }

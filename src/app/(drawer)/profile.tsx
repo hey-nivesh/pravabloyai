@@ -63,34 +63,37 @@ export default function ProfileScreen() {
 
     // 2. Open picker
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ['images'],
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.85,
+      quality: 0.7,
+      base64: true,
     });
 
     if (result.canceled || !result.assets?.[0]) return;
 
-    const pickedUri = result.assets[0].uri;
+    const picked = result.assets[0];
 
-    // 3. Upload to Cloudinary
+    // 3. Upload via server proxy (falls back to direct Cloudinary on failure)
     setUploading(true);
     setUploadError(null);
 
     try {
-      const { secureUrl, publicId } = await uploadAvatarImage(pickedUri, user.id);
+      const result = await uploadAvatarImage(
+        {
+          uri: picked.uri,
+          base64: picked.base64 ?? null,
+          mimeType: picked.mimeType ?? null,
+        },
+        user.id,
+      );
 
-      // 4. Persist the new URLs in public.users
-      const { error: dbError } = await supabase
+      // Server proxy persists avatar_url; ensure DB is updated if direct Cloudinary fallback was used
+      await supabase
         .from('users')
-        .update({ avatar_url: secureUrl, avatar_public_id: publicId })
+        .update({ avatar_url: result.secureUrl, avatar_public_id: result.publicId })
         .eq('id', user.id);
 
-      if (dbError) {
-        throw new Error(`Failed to save avatar: ${dbError.message}`);
-      }
-
-      // 5. Trigger refetch so the realtime subscription and local state both update
       await refetch();
     } catch (err) {
       let message = 'Something went wrong uploading your avatar. Please try again.';
