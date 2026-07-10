@@ -173,8 +173,10 @@ export default function VoiceSessionScreen() {
     transcript,
     error,
     isMuted,
+    sessionId,
     connect,
     disconnect,
+    endSession,
     toggleMute,
   } = useVoiceStream();
 
@@ -218,9 +220,18 @@ export default function VoiceSessionScreen() {
 
   // ── End session ───────────────────────────────────────────────────────────
   const handleEnd = useCallback(async () => {
+    const activeSessionId = sessionId;
+    await endSession();
     await disconnect();
+    if (activeSessionId) {
+      router.replace({
+        pathname: '/session/analysis/[sessionId]',
+        params: { sessionId: activeSessionId, caseStudyId: caseStudy.id },
+      });
+      return;
+    }
     router.back();
-  }, [disconnect, router]);
+  }, [caseStudy.id, disconnect, endSession, router, sessionId]);
 
   // ── Derived waveform source ───────────────────────────────────────────────
   // Show AI waveform when AI is speaking, otherwise show user's mic level.

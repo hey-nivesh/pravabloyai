@@ -130,7 +130,6 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
   const [isMuted, setIsMuted] = useState(false);
   const isMutedRef = useRef(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const sessionAnalyzedResolverRef = useRef<((reportId: string | null) => void) | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
   const pcmChunkQueueRef = useRef<Uint8Array[]>([]);
@@ -421,25 +420,23 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
     }
   }, [transitionState]);
 
-  // ── Graceful end session (waits for analytics report) ─────────────────
-  const endSession = useCallback((): Promise<{ reportId: string | null }> => {
+  // ── Graceful end session (flushes transcript server-side; analysis runs via Edge Function) ──
+  const endSession = useCallback((): Promise<void> => {
     return new Promise((resolve) => {
       const ws = socketRef.current;
       if (!ws || ws.readyState !== WebSocket.OPEN) {
-        resolve({ reportId: null });
+        resolve();
         return;
       }
 
-      const timeout = setTimeout(() => {
-        sessionAnalyzedResolverRef.current = null;
-        resolve({ reportId: null });
-      }, 45000);
+      const timeout = setTimeout(() => resolve(), 12_000);
 
-      sessionAnalyzedResolverRef.current = (reportId) => {
+      const onClose = () => {
         clearTimeout(timeout);
-        resolve({ reportId });
+        resolve();
       };
 
+      ws.addEventListener('close', onClose, { once: true });
       ws.send(JSON.stringify({ event: 'end_session' }));
     });
   }, []);
@@ -449,7 +446,6 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
     setStatus('idle');
     setLivePacing(null);
     setSessionId(null);
-    sessionAnalyzedResolverRef.current = null;
     socketSendRef.current = null;
     if (socketRef.current) {
       socketRef.current.close();
@@ -565,10 +561,6 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
             }
           } else if (data.event === 'live_pacing') {
             setLivePacing(data.payload);
-          } else if (data.event === 'session_analyzed') {
-            const reportId = data.payload?.reportId ?? null;
-            sessionAnalyzedResolverRef.current?.(reportId);
-            sessionAnalyzedResolverRef.current = null;
           } else if (data.event === 'interrupted') {
             handleBargeIn();
           } else if (data.event === 'error') {
