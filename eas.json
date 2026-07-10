@@ -9,7 +9,24 @@
       "distribution": "internal"
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "preview-apk": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://pravabloy-ai-backend.onrender.com",
+        "EXPO_PUBLIC_VOICE_GATEWAY_URL": "wss://pravabloy-ai-backend.onrender.com/ws/voice-session",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://yyhaksmlfnghwjaulsfr.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl5aGFrc21sZm5naHdqYXVsc2ZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyNTA3NjYsImV4cCI6MjA5ODgyNjc2Nn0.kzNcxsRj67eSOeH-1kCXopL6_JShC_bJBr7EfPtOegg",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "drvvefqs9",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "avatar"
+      }
     },
     "production": {
       "autoIncrement": true

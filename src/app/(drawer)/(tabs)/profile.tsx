@@ -14,7 +14,7 @@ import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
 import * as ImagePicker from 'expo-image-picker';
 
-import { Brand, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { Brand, BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { Skeleton } from '@/components/home/Skeleton';
 import { useUserProfile, getFirstName, formatMemberSince } from '@/hooks/useUserProfile';
 import { uploadAvatarImage, CloudinaryUploadError } from '@/services/cloudinaryUpload';
@@ -31,6 +31,7 @@ export default function ProfileScreen() {
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const topPadding = Platform.OS === 'android' ? insets.top : insets.top + Spacing.two;
+  const bottomPadding = insets.bottom + BottomTabInset + Spacing.two;
 
   // ─── Derived display values ──────────────────────────────────────────────
 
@@ -115,9 +116,9 @@ export default function ProfileScreen() {
       <View style={styles.root}>
         <View style={[StyleSheet.absoluteFill, styles.gradientBg]} />
         <View style={[styles.header, { paddingTop: topPadding }]}>
-          <View style={styles.backBtn} />
+          <View style={styles.headerSpacer} />
           <Skeleton width={120} height={22} borderRadius={Radius.sm} />
-          <View style={{ width: 40 }} />
+          <View style={styles.headerSpacer} />
         </View>
         <View style={styles.content}>
           <View style={styles.profileCard}>
@@ -144,23 +145,12 @@ export default function ProfileScreen() {
 
       {/* Header */}
       <View style={[styles.header, { paddingTop: topPadding }]}>
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <SymbolView
-            name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
-            size={20}
-            tintColor={Brand.primaryDark}
-          />
-        </Pressable>
+        <View style={styles.headerSpacer} />
         <Text style={styles.headerTitle}>My Profile</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerSpacer} />
       </View>
 
-      <View style={styles.content}>
+      <View style={[styles.content, { paddingBottom: bottomPadding }]}>
         <View style={styles.profileCard}>
 
           {/* ── Avatar with upload badge ── */}
@@ -289,21 +279,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingBottom: Spacing.two,
   },
-  backBtn: {
+  headerSpacer: {
     width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Brand.cardBg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: Brand.shadowColor,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  backBtnPressed: {
-    opacity: 0.75,
   },
   headerTitle: {
     fontSize: 18,

@@ -28,9 +28,6 @@ export default function DrawerLayout() {
       }}
     >
       <Drawer.Screen name="(tabs)" options={{ title: 'Home' }} />
-      <Drawer.Screen name="profile" options={{ title: 'Profile' }} />
-      <Drawer.Screen name="practice" options={{ title: 'Practice' }} />
-      <Drawer.Screen name="vocab" options={{ title: 'Vocab' }} />
       <Drawer.Screen name="progress" options={{ title: 'Progress' }} />
       <Drawer.Screen name="analytics" options={{ title: 'Analytics' }} />
       <Drawer.Screen name="history" options={{ title: 'History' }} />

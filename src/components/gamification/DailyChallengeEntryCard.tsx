@@ -5,21 +5,26 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Skeleton } from '@/components/home/Skeleton';
 import { Brand, Radius, Spacing } from '@/constants/theme';
-import { useDailyChallenge } from '@/hooks/useDailyChallenge';
+import { type DailyChallenge, useDailyChallenge } from '@/hooks/useDailyChallenge';
 
 type SymbolName = ComponentProps<typeof SymbolView>['name'];
 
 const ICON_SHIELD: SymbolName = { ios: 'shield.fill', android: 'shield', web: 'shield' };
 
-export function DailyChallengeEntryCard() {
+type DailyChallengeEntryCardProps = {
+  challenge?: DailyChallenge | null;
+};
+
+export function DailyChallengeEntryCard({ challenge: challengeProp }: DailyChallengeEntryCardProps = {}) {
   const router = useRouter();
-  const { challenge, loading } = useDailyChallenge();
+  const { challenge: fetchedChallenge, loading } = useDailyChallenge();
+  const challenge = challengeProp !== undefined ? challengeProp : fetchedChallenge;
 
   const tasks = challenge?.tasks ?? [];
   const completedCount = tasks.filter((t) => t.completed).length;
   const totalCount = tasks.length || 5;
 
-  if (loading) {
+  if (challengeProp === undefined && loading) {
     return (
       <View style={styles.wrapper}>
         <Skeleton height={100} borderRadius={Radius.xl} />

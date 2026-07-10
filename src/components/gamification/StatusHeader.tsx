@@ -7,8 +7,8 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Skeleton } from '@/components/home/Skeleton';
 import { Brand, Radius, Spacing } from '@/constants/theme';
 import { getLexiconTierDisplayName } from '@/constants/lexiconTier';
-import { getFirstName, useUserProfile } from '@/hooks/useUserProfile';
-import { useProgressSummary } from '@/hooks/useProgressSummary';
+import { getFirstName, useUserProfile, type UserProfileRow } from '@/hooks/useUserProfile';
+import { useProgressSummary, type ProgressSummary } from '@/hooks/useProgressSummary';
 import { useNotifications } from '@/hooks/useNotifications';
 
 type SymbolName = ComponentProps<typeof SymbolView>['name'];
@@ -19,15 +19,32 @@ const ICON_MENU: SymbolName = { ios: 'line.horizontal.3', android: 'menu', web: 
 type StatusHeaderProps = {
   showMenu?: boolean;
   onMenuPress?: () => void;
+  /** When provided (e.g. from HomeDataProvider), skips internal fetch skeletons. */
+  profile?: UserProfileRow | null;
+  userEmail?: string | null;
+  progressSummary?: ProgressSummary | null;
 };
 
-export function StatusHeader({ showMenu = true, onMenuPress }: StatusHeaderProps) {
+export function StatusHeader({
+  showMenu = true,
+  onMenuPress,
+  profile: profileProp,
+  userEmail,
+  progressSummary: summaryProp,
+}: StatusHeaderProps) {
   const router = useRouter();
-  const { user, profile, loading } = useUserProfile();
-  const { summary, loading: tierLoading } = useProgressSummary();
+  const profileHook = useUserProfile();
+  const summaryHook = useProgressSummary();
   const { unreadCount } = useNotifications();
 
-  const firstName = getFirstName(profile, user?.email);
+  const useExternal = profileProp !== undefined;
+  const profile = useExternal ? profileProp : profileHook.profile;
+  const user = useExternal ? null : profileHook.user;
+  const loading = useExternal ? false : profileHook.loading;
+  const summary = summaryProp !== undefined ? summaryProp : summaryHook.summary;
+  const tierLoading = summaryProp !== undefined ? false : summaryHook.loading;
+
+  const firstName = getFirstName(profile, useExternal ? userEmail : user?.email);
   const streakCount = profile?.streak_count ?? 0;
   const level = profile?.xp_level ?? 1;
   const lexiconTier = getLexiconTierDisplayName(summary?.latest?.lexiconTier);

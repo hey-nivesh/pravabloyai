@@ -21,10 +21,9 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { SymbolView } from 'expo-symbols';
 import { useAudioPlayer, useAudioPlayerStatus, setAudioModeAsync } from 'expo-audio';
 
-import { Brand, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { Brand, BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useUserProfile, getFirstName } from '@/hooks/useUserProfile';
 import { useDailyWord, MasteryResponse } from '@/hooks/use-daily-word';
 import { Skeleton } from '@/components/home/Skeleton';
@@ -53,7 +52,7 @@ export default function VocabVaultScreen() {
 
   const streakCount = profile?.streak_count ?? 0;
   const topPadding = Platform.OS === 'android' ? insets.top : insets.top + Spacing.two;
-  const bottomPadding = insets.bottom + Spacing.five;
+  const bottomPadding = insets.bottom + BottomTabInset + Spacing.two;
 
   // Coach avatar pose tracking: 'explaining' | 'celebrating' | 'resting'
   const [coachState, setCoachState] = useState<'explaining' | 'celebrating' | 'resting'>('explaining');
@@ -141,20 +140,9 @@ export default function VocabVaultScreen() {
 
       {/* Main Header Bar */}
       <View style={[styles.header, { paddingTop: topPadding }]}>
-        <Pressable
-          onPress={handleGoHome}
-          style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Go back to Dashboard"
-        >
-          <SymbolView
-            name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
-            size={20}
-            tintColor={Brand.primaryDark}
-          />
-        </Pressable>
+        <View style={styles.headerSpacer} />
         <Text style={styles.headerTitle}>Daily Word</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerSpacer} />
       </View>
 
       {/* Loading Skeleton State */}
@@ -232,21 +220,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingBottom: Spacing.two,
   },
-  backBtn: {
+  headerSpacer: {
     width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Brand.cardBg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: Brand.shadowColor,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  backBtnPressed: {
-    opacity: 0.75,
   },
   headerTitle: {
     fontSize: 18,

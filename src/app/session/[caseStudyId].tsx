@@ -52,7 +52,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Radius } from '@/constants/theme';
-import { CASE_STUDIES, CaseStudy } from '../(drawer)/practice';
+import { CASE_STUDIES, type CaseStudy } from '@/constants/case-studies';
 import { useVoiceStream } from '@/hooks/useVoiceStream';
 import MascotAvatar from '@/components/session/MascotAvatar';
 import WaveformVisualizer from '@/components/session/WaveformVisualizer';

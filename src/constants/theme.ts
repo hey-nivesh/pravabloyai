@@ -106,5 +106,11 @@ export const Radius = {
   full: 9999,
 } as const;
 
-export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0;
+/** Visible tab bar body height (excluding safe-area inset). */
+export const TabBarHeight = 72;
+/** Raised center voice FAB diameter. */
+export const TabBarFabSize = 58;
+/** Content padding above the floating tab bar. */
+export const BottomTabInset =
+  Platform.select({ ios: TabBarHeight + 12, android: TabBarHeight + 8, default: TabBarHeight + 10 }) ?? TabBarHeight;
 export const MaxContentWidth = 800;

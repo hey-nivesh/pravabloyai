@@ -4,96 +4,24 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
 
-import { Brand, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-
-export interface CaseStudy {
-  id: string;
-  title: string;
-  category: 'casual' | 'executive' | 'interview';
-  description: string;
-  contextLine: string;
-  difficulty: 'Beginner' | 'Intermediate' | 'Advanced';
-  durationMin: number;
-  suggestions: string[];
-}
-
-export const CASE_STUDIES: CaseStudy[] = [
-  {
-    id: 'salary-negotiation',
-    title: 'Salary Negotiation',
-    category: 'executive',
-    description: 'Practice negotiating your base salary increment with your manager using professional and diplomatic framing.',
-    contextLine: 'Salary review session with the VP of Engineering',
-    difficulty: 'Advanced',
-    durationMin: 10,
-    suggestions: ['market benchmark', 'increased scope of impact', 'achievements aligned with goals', 'competitive compensation'],
-  },
-  {
-    id: 'ordering-coffee',
-    title: 'Ordering at a Cafe',
-    category: 'casual',
-    description: 'Practice making orders at a busy NYC cafe, asking for custom milk/espresso preferences, and friendly small talk.',
-    contextLine: 'Ordering from a high-paced barista',
-    difficulty: 'Beginner',
-    durationMin: 5,
-    suggestions: ['double shot espresso', 'oat milk flat white', 'extra hot', 'keep the change'],
-  },
-  {
-    id: 'system-design',
-    title: 'System Design Interview',
-    category: 'interview',
-    description: 'A mock technical interview simulating a staff engineer discussion on database sharding, caching, and horizontal scaling.',
-    contextLine: 'Staff Engineer system design interview loop',
-    difficulty: 'Advanced',
-    durationMin: 15,
-    suggestions: ['horizontal scaling', 'cache eviction policy', 'single point of failure', 'read replica database'],
-  },
-  {
-    id: 'hotel-checkin',
-    title: 'Hotel Check-In',
-    category: 'casual',
-    description: 'Confirm a booking, request a room upgrade, and ask for local tourist recommendations at a boutique hotel reception.',
-    contextLine: 'Boutique hotel front desk arrival',
-    difficulty: 'Intermediate',
-    durationMin: 7,
-    suggestions: ['room upgrade options', 'booking confirmation', 'complimentary breakfast', 'local attractions'],
-  }
-];
-
-const CATEGORY_COLORS = {
-  casual: { bg: Brand.accentBlueBg, text: Brand.accentBlue, label: 'Casual Chat' },
-  executive: { bg: Brand.primaryBadgeBg, text: Brand.primary, label: 'Executive Meeting' },
-  interview: { bg: Brand.accentAmberBg, text: Brand.accentAmber, label: 'Mock Interview' },
-};
+import { CASE_STUDIES, CATEGORY_COLORS } from '@/constants/case-studies';
+import { Brand, BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 
 export default function PracticeModesScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const topPadding = Platform.OS === 'android' ? insets.top : insets.top + Spacing.two;
-  const bottomPadding = insets.bottom + Spacing.five;
+  const bottomPadding = insets.bottom + BottomTabInset + Spacing.two;
 
   return (
     <View style={styles.root}>
-      {/* Soft gradient background */}
       <View style={[StyleSheet.absoluteFill, styles.gradientBg]} />
 
-      {/* Header */}
       <View style={[styles.header, { paddingTop: topPadding }]}>
-        <Pressable
-          onPress={() => router.back()}
-          style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
-          accessibilityRole="button"
-          accessibilityLabel="Go back"
-        >
-          <SymbolView
-            name={{ ios: 'chevron.left', android: 'arrow_back', web: 'arrow_back' }}
-            size={20}
-            tintColor={Brand.primaryDark}
-          />
-        </Pressable>
+        <View style={styles.headerSpacer} />
         <Text style={styles.headerTitle}>Practice Scenarios</Text>
-        <View style={{ width: 40 }} />
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView
@@ -111,7 +39,11 @@ export default function PracticeModesScreen() {
           {CASE_STUDIES.map((study) => {
             const cat = CATEGORY_COLORS[study.category];
             const isAdvanced = study.difficulty === 'Advanced';
-            const diffColor = isAdvanced ? '#EF4444' : study.difficulty === 'Intermediate' ? '#F59E0B' : Brand.accentGreen;
+            const diffColor = isAdvanced
+              ? '#EF4444'
+              : study.difficulty === 'Intermediate'
+                ? '#F59E0B'
+                : Brand.accentGreen;
 
             return (
               <Pressable
@@ -121,7 +53,6 @@ export default function PracticeModesScreen() {
                 accessibilityRole="button"
                 accessibilityLabel={`Practice ${study.title}`}
               >
-                {/* Header info */}
                 <View style={styles.cardHeader}>
                   <View style={[styles.badge, { backgroundColor: cat.bg }]}>
                     <Text style={[styles.badgeText, { color: cat.text }]}>{cat.label}</Text>
@@ -132,7 +63,6 @@ export default function PracticeModesScreen() {
                   </View>
                 </View>
 
-                {/* Body */}
                 <Text style={styles.cardTitle}>{study.title}</Text>
                 <Text style={styles.cardDesc} numberOfLines={3}>
                   {study.description}
@@ -140,7 +70,6 @@ export default function PracticeModesScreen() {
 
                 <View style={styles.divider} />
 
-                {/* Footer details */}
                 <View style={styles.cardFooter}>
                   <View style={styles.metaRow}>
                     <SymbolView
@@ -186,21 +115,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.three,
     paddingBottom: Spacing.two,
   },
-  backBtn: {
+  headerSpacer: {
     width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Brand.cardBg,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: Brand.shadowColor,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
-  },
-  backBtnPressed: {
-    opacity: 0.75,
   },
   headerTitle: {
     fontSize: 18,

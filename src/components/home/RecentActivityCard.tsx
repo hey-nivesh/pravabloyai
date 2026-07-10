@@ -39,11 +39,7 @@ const CHEVRON_ICON: SymbolName = {
   web: 'chevron_right',
 };
 
-/**
- * Shows the most recent voice session as a horizontal card.
- * If no session exists (first-time user), renders a friendly empty state
- * encouraging them to start their first session.
- */
+/** Layout-validated against long scenario titles via maxWidth + numberOfLines. */
 export function RecentActivityCard({ session }: RecentActivityCardProps) {
   const router = useRouter();
 
@@ -55,15 +51,11 @@ export function RecentActivityCard({ session }: RecentActivityCardProps) {
   const badgeBg = CATEGORY_COLOR[session.category];
   const iconColor = CATEGORY_ICON_COLOR[session.category];
   const durationMin = Math.ceil(session.durationSeconds / 60);
+  const title = session.modeName;
 
   return (
     <View style={styles.cardOuter} accessibilityLabel="Recent activity">
       <View style={styles.activeCard}>
-        <ExpoImage
-          source={require('@/assets/images/coach-explaining.png')}
-          style={styles.activeCoach}
-          contentFit="contain"
-        />
         <View style={styles.activeBody}>
           <View style={styles.activeTop}>
             <View style={[styles.iconBadge, { backgroundColor: badgeBg }]}>
@@ -73,13 +65,21 @@ export function RecentActivityCard({ session }: RecentActivityCardProps) {
               <Text style={styles.ratingText}>● Live</Text>
             </View>
           </View>
-          <Text style={styles.activeTitle} numberOfLines={2}>
-            {session.modeName}
+          <Text style={styles.activeTitle} numberOfLines={3}>
+            {title}
           </Text>
           <Text style={styles.activeMeta}>
             {formatRelativeDate(session.completedAt)} · {durationMin} min practice
           </Text>
         </View>
+
+        <ExpoImage
+          source={require('@/assets/images/coach-explaining.png')}
+          style={styles.activeCoach}
+          contentFit="contain"
+          accessibilityLabel="Coach illustration"
+        />
+
         <Pressable
           style={({ pressed }) => [styles.fab, pressed && styles.resumeBtnPressed]}
           onPress={() => {
@@ -110,32 +110,32 @@ function EmptyState() {
       accessibilityLabel="No recent sessions — start your first session"
     >
       <View style={styles.emptyCard}>
-      <ExpoImage
-        source={require('@/assets/images/coach-resting.png')}
-        style={styles.emptyCoach}
-        contentFit="contain"
-        accessibilityLabel="Coach resting in no recent sessions state"
-      />
-      <View style={[styles.iconBadge, { backgroundColor: Brand.primaryBadgeBg }]}>
-        <SymbolView name={micIcon} size={22} tintColor={Brand.primary} />
-      </View>
+        <ExpoImage
+          source={require('@/assets/images/coach-resting.png')}
+          style={styles.emptyCoach}
+          contentFit="contain"
+          accessibilityLabel="Coach resting in no recent sessions state"
+        />
+        <View style={[styles.iconBadge, { backgroundColor: Brand.primaryBadgeBg }]}>
+          <SymbolView name={micIcon} size={22} tintColor={Brand.primary} />
+        </View>
 
-      <View style={styles.emptyBody}>
-        <Text style={styles.emptyHeading}>Start your first session!</Text>
-        <Text style={styles.emptySubtext}>
-          Your practice history will appear here after your first conversation.
-        </Text>
-      </View>
+        <View style={styles.emptyBody}>
+          <Text style={styles.emptyHeading}>Start your first session!</Text>
+          <Text style={styles.emptySubtext}>
+            Your practice history will appear here after your first conversation.
+          </Text>
+        </View>
 
-      <Pressable
-        style={({ pressed }) => [styles.resumeBtn, pressed && styles.resumeBtnPressed]}
-        onPress={() => router.push('/practice' as never)}
-        accessibilityRole="button"
-        accessibilityLabel="Go to practice — start your first session"
-      >
-        <Text style={styles.resumeLabel}>Begin</Text>
-        <SymbolView name={CHEVRON_ICON} size={11} tintColor={Brand.primary} />
-      </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.resumeBtn, pressed && styles.resumeBtnPressed]}
+          onPress={() => router.push('/practice' as never)}
+          accessibilityRole="button"
+          accessibilityLabel="Go to practice — start your first session"
+        >
+          <Text style={styles.resumeLabel}>Begin</Text>
+          <SymbolView name={CHEVRON_ICON} size={11} tintColor={Brand.primary} />
+        </Pressable>
       </View>
     </View>
   );
@@ -197,24 +197,27 @@ const styles = StyleSheet.create({
     backgroundColor: Brand.primaryBadgeBg,
     borderRadius: Radius.xl,
     padding: Spacing.three + 2,
-    minHeight: 130,
-    overflow: 'hidden',
+    minHeight: 140,
+    overflow: 'visible',
     borderWidth: 1,
     borderColor: 'rgba(127, 34, 253, 0.12)',
     position: 'relative',
   },
   activeCoach: {
     position: 'absolute',
-    right: -14,
-    bottom: -10,
-    width: 100,
-    height: 110,
-    opacity: 0.9,
-    zIndex: 0,
+    top: -30,
+    right: -20,
+    width: 120,
+    height: 130,
+    zIndex: 2,
   },
   activeBody: {
     paddingRight: 72,
+    paddingBottom: Spacing.one,
     gap: Spacing.one,
+    zIndex: 1,
+    position: 'relative',
+    maxWidth: '72%',
   },
   activeTop: {
     flexDirection: 'row',
@@ -246,20 +249,22 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    right: Spacing.three,
-    bottom: Spacing.three,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    right: -6,
+    bottom: -10,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: Brand.cardBg,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 2,
+    zIndex: 3,
     shadowColor: Brand.shadowColor,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.16,
+    shadowRadius: 10,
+    elevation: 6,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.9)',
   },
   emptyCard: {
     backgroundColor: Platform.select({
@@ -284,9 +289,6 @@ const styles = StyleSheet.create({
     height: 52,
     marginRight: -Spacing.one,
   },
-  left: {
-    flexShrink: 0,
-  },
   iconBadge: {
     width: 44,
     height: 44,
@@ -294,23 +296,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  body: {
-    flex: 1,
-    gap: 2,
-  },
   emptyBody: {
     flex: 1,
     gap: 3,
-  },
-  modeName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: Brand.primaryDark,
-  },
-  meta: {
-    fontSize: 12,
-    color: Brand.grayText,
-    fontWeight: '500',
   },
   emptyHeading: {
     fontSize: 13,

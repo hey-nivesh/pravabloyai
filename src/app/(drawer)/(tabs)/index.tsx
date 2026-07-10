@@ -1,24 +1,23 @@
-import { type ComponentProps } from 'react';
+import { type ComponentProps, useEffect } from 'react';
 import { Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useRouter, useNavigation } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { DrawerNavigationProp } from '@react-navigation/drawer';
 
 import { BentoGrid } from '@/components/home/BentoGrid';
 import { BentoTile } from '@/components/home/BentoTile';
 import { HeroBanner } from '@/components/home/HeroBanner';
 import { HomeGreeting } from '@/components/home/HomeGreeting';
+import { HomeScreenSkeleton } from '@/components/home/HomeScreenSkeleton';
 import { HomeStatsRow } from '@/components/home/HomeStatsRow';
-import { RecentActivityCard, RecentActivityCardSkeleton } from '@/components/home/RecentActivityCard';
-import { Skeleton } from '@/components/home/Skeleton';
+import { RecentActivityCard } from '@/components/home/RecentActivityCard';
 import { TodayGoalsCard } from '@/components/home/TodayGoalsCard';
 import { DailyChallengeEntryCard } from '@/components/gamification/DailyChallengeEntryCard';
 import { JourneyMapEntryCard } from '@/components/gamification/JourneyMapEntryCard';
 import { StatusHeader } from '@/components/gamification/StatusHeader';
-import { Brand, BottomTabInset, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
-import { useUserProfile, getFirstName } from '@/hooks/useUserProfile';
-import { useRecentSession } from '@/hooks/use-recent-session';
-import { useTodayPracticeStats } from '@/hooks/useTodayPracticeStats';
+import { Brand, BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+import { useHomeData } from '@/context/home-data-context';
+import { useVoiceStart } from '@/context/voice-start-context';
+import { getFirstName } from '@/hooks/useUserProfile';
 
 type SymbolName = ComponentProps<typeof BentoTile>['icon'];
 
@@ -116,20 +115,52 @@ const YOUR_TOOLS: ReadonlyArray<{
 
 export default function HomeScreen() {
   const router = useRouter();
-  const navigation = useNavigation<DrawerNavigationProp<any>>();
+  const drawerNavigation = useNavigation('/(drawer)');
   const insets = useSafeAreaInsets();
-  const { user, profile, loading: isUserLoading } = useUserProfile();
-  const sessionResult = useRecentSession();
   const {
+    ready,
+    userEmail,
+    profile,
+    recentSession,
+    dailyChallenge,
+    progressSummary,
     minutesToday,
     totalMinutes,
     sessionsCompleted,
-    loading: statsLoading,
-  } = useTodayPracticeStats();
+  } = useHomeData();
+  const { setScenarioCaseStudyId } = useVoiceStart();
 
-  const firstName = getFirstName(profile, user?.email) || 'there';
+  const firstName = getFirstName(profile, userEmail) || 'there';
   const topPadding = Platform.OS === 'android' ? insets.top : insets.top + Spacing.two;
-  const bottomPadding = insets.bottom + BottomTabInset + Spacing.five;
+  const bottomPadding = insets.bottom + BottomTabInset + Spacing.two;
+
+  useEffect(() => {
+    if (recentSession?.caseStudyId) {
+      setScenarioCaseStudyId(recentSession.caseStudyId);
+    } else {
+      setScenarioCaseStudyId(null);
+    }
+  }, [recentSession?.caseStudyId, setScenarioCaseStudyId]);
+
+  const openDrawer = () => {
+    if (
+      'openDrawer' in drawerNavigation &&
+      typeof drawerNavigation.openDrawer === 'function'
+    ) {
+      drawerNavigation.openDrawer();
+    }
+  };
+
+  if (!ready) {
+    return (
+      <View style={styles.root}>
+        <View style={[StyleSheet.absoluteFill, styles.gradientBg]} />
+        <View style={{ paddingTop: topPadding, paddingBottom: bottomPadding }}>
+          <HomeScreenSkeleton />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.root}>
@@ -144,35 +175,30 @@ export default function HomeScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.inner}>
-          <StatusHeader showMenu onMenuPress={() => navigation.openDrawer()} />
+          <StatusHeader
+            showMenu
+            onMenuPress={openDrawer}
+            profile={profile}
+            userEmail={userEmail}
+            progressSummary={progressSummary}
+          />
 
-          <HomeGreeting firstName={firstName} loading={isUserLoading} />
+          <HomeGreeting firstName={firstName} />
 
-          {isUserLoading ? (
-            <View style={styles.heroSkeletonWrapper}>
-              <Skeleton height={168} borderRadius={Radius.xl} />
-            </View>
-          ) : (
-            <HeroBanner
-              greetingName={firstName}
-              onStartPress={() => router.push('/practice' as never)}
-            />
-          )}
+          <HeroBanner
+            greetingName={firstName}
+            onStartPress={() => router.push('/practice' as never)}
+          />
 
           <TodayGoalsCard
             minutesToday={minutesToday}
             streakCount={profile?.streak_count ?? 0}
             xpTotal={profile?.xp_total ?? 0}
-            loading={isUserLoading || statsLoading}
           />
 
-          <HomeStatsRow
-            totalMinutes={totalMinutes}
-            sessionsCompleted={sessionsCompleted}
-            loading={statsLoading}
-          />
+          <HomeStatsRow totalMinutes={totalMinutes} sessionsCompleted={sessionsCompleted} />
 
-          <DailyChallengeEntryCard />
+          <DailyChallengeEntryCard challenge={dailyChallenge} />
           <JourneyMapEntryCard />
 
           <BentoGrid title="Practice Modes" seeAllHref="/practice" expandInline={false}>
@@ -205,11 +231,7 @@ export default function HomeScreen() {
 
           <View style={styles.recentSection}>
             <Text style={styles.sectionTitle}>Active Practice</Text>
-            {sessionResult.status === 'loading' ? (
-              <RecentActivityCardSkeleton />
-            ) : (
-              <RecentActivityCard session={sessionResult.session} />
-            )}
+            <RecentActivityCard session={recentSession} />
           </View>
         </View>
       </ScrollView>
@@ -237,9 +259,6 @@ const styles = StyleSheet.create({
     flex: 1,
     maxWidth: MaxContentWidth,
     gap: Spacing.four,
-  },
-  heroSkeletonWrapper: {
-    marginHorizontal: Spacing.three,
   },
   recentSection: {
     gap: Spacing.two + 2,

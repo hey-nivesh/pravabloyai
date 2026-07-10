@@ -1,4 +1,4 @@
-import { DarkTheme, DefaultTheme, ThemeProvider, Slot, useSegments, useRouter } from 'expo-router';
+import { DarkTheme, DefaultTheme, ThemeProvider, Slot, useRootNavigationState, useSegments, useRouter } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useColorScheme } from 'react-native';
 import { useEffect } from 'react';
@@ -6,6 +6,8 @@ import { useEffect } from 'react';
 import { AnimatedSplashOverlay } from '@/components/animated-icon';
 import { StreakActivityRecorder } from '@/components/StreakActivityRecorder';
 import { AuthProvider, useAuth } from '@/context/auth-context';
+import { HomeDataProvider } from '@/context/home-data-context';
+import { VoiceStartProvider } from '@/context/voice-start-context';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -18,20 +20,20 @@ function RootLayoutNav() {
   const { session, isLoading } = useAuth();
   const segments = useSegments();
   const router = useRouter();
+  const navigationState = useRootNavigationState();
+  const navigationReady = Boolean(navigationState?.key);
 
   useEffect(() => {
-    if (isLoading) return; // Wait for the initial session check to finish
+    if (isLoading || !navigationReady) return;
 
     const inAuthGroup = segments[0] === '(auth)';
 
     if (!session && !inAuthGroup) {
-      // No session and not already on an auth screen → redirect to login
       router.replace('/(auth)/login');
     } else if (session && inAuthGroup) {
-      // Session exists but still on an auth screen → redirect into the app
       router.replace('/');
     }
-  }, [session, isLoading, segments, router]);
+  }, [session, isLoading, segments, router, navigationReady]);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
@@ -45,7 +47,11 @@ function RootLayoutNav() {
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <RootLayoutNav />
+      <HomeDataProvider>
+        <VoiceStartProvider>
+          <RootLayoutNav />
+        </VoiceStartProvider>
+      </HomeDataProvider>
     </AuthProvider>
   );
 }

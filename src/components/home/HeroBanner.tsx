@@ -40,7 +40,7 @@ export function HeroBanner({ onStartPress }: HeroBannerProps) {
 
       <View style={styles.mascotContainer} pointerEvents="none">
         <Image
-          source={require('@/assets/images/coach-explaining.png')}
+          source={require('@/assets/images/avatar.png')}
           style={styles.mascot}
           contentFit="contain"
           accessibilityLabel="PravabloyAI coach"

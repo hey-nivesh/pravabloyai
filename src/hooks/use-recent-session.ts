@@ -3,6 +3,7 @@ import { supabase } from '@/lib/supabase';
 
 export type VoiceSession = {
   id: string;
+  caseStudyId: string;
   modeName: string;
   category: 'casual' | 'executive' | 'interview';
   completedAt: string; // ISO date string
@@ -79,6 +80,7 @@ export function useRecentSession(): UseRecentSessionResult {
 
         const mapped: VoiceSession = {
           id: String(sessionRow.id),
+          caseStudyId: String(sessionRow.case_study_id ?? 'ordering-coffee'),
           modeName,
           category,
           completedAt: String(sessionRow.completed_at ?? sessionRow.updated_at ?? sessionRow.created_at),
