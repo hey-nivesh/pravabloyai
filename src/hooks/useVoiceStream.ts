@@ -466,7 +466,7 @@ export function useVoiceStream(props: UseVoiceStreamProps = {}) {
     reconnectAttemptsRef.current = 0;
 
     const gatewayUrl =
-      process.env.EXPO_PUBLIC_VOICE_GATEWAY_URL ?? 'wss://api.pravabloy.ai/ws/voice-session';
+      process.env.EXPO_PUBLIC_VOICE_GATEWAY_URL ?? 'wss://pravabloy-ai-backend.onrender.com/ws/voice-session';
 
     // Fetch the Supabase access token so the gateway's requireAuth middleware accepts us
     let accessToken = '';

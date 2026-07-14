@@ -2,7 +2,7 @@ import { supabase } from '@/lib/supabase';
 
 export function deriveApiBaseUrl(): string {
   const gatewayUrl =
-    process.env.EXPO_PUBLIC_VOICE_GATEWAY_URL ?? 'wss://api.pravabloy.ai/ws/voice-session';
+    process.env.EXPO_PUBLIC_VOICE_GATEWAY_URL ?? 'wss://pravabloy-ai-backend.onrender.com/ws/voice-session';
   if (gatewayUrl.startsWith('wss://')) {
     return gatewayUrl.replace('wss://', 'https://').replace('/ws/voice-session', '');
   }

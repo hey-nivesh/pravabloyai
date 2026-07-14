@@ -30,7 +30,7 @@ export type ProgressSummary = {
 };
 
 function deriveApiBaseUrl() {
-  const gatewayUrl = process.env.EXPO_PUBLIC_VOICE_GATEWAY_URL ?? 'wss://api.pravabloy.ai/ws/voice-session';
+  const gatewayUrl = process.env.EXPO_PUBLIC_VOICE_GATEWAY_URL ?? 'wss://pravabloy-ai-backend.onrender.com/ws/voice-session';
   if (gatewayUrl.startsWith('wss://')) return gatewayUrl.replace('wss://', 'https://').replace('/ws/voice-session', '');
   if (gatewayUrl.startsWith('ws://')) return gatewayUrl.replace('ws://', 'http://').replace('/ws/voice-session', '');
   return gatewayUrl.replace('/ws/voice-session', '');

@@ -33,7 +33,7 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 export const DAILY_SESSION_SIZE = 5;
 
 export const API_BASE =
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://api.pravabloy.ai';
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://pravabloy-ai-backend.onrender.com';
 const CACHE_KEY_PREFIX = 'daily_word_session_v2';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -288,6 +288,16 @@ export async function resolveWordAudioUrl(
     return youdaoWordUrl(word.word);
   }
 
+  // Prefer text-based lookup — works for AI-generated words that may not be
+  // indexed by the Express server's DB pronunciation endpoint yet.
+  if (word.word) {
+    try {
+      return await fetchPronunciationAudioUrl({ text: word.word, type: 'word', speed, lang });
+    } catch {
+      // Fall through to wordId-based lookup as last resort
+    }
+  }
+
   return fetchPronunciationAudioUrl({ wordId: word.id, speed, lang });
 }
 
@@ -297,7 +307,9 @@ export async function resolveExampleAudioUrl(
 ): Promise<string> {
   if (word.exampleAudioUrl) return word.exampleAudioUrl;
 
-  if (word.id.startsWith('mock-')) {
+  // Prefer text-based TTS — works for AI-generated words regardless of DB state.
+  // The Express server's /pronunciation endpoint accepts a raw 'text' param.
+  if (word.exampleSentence) {
     try {
       return await fetchPronunciationAudioUrl({
         text: word.exampleSentence,
@@ -305,8 +317,12 @@ export async function resolveExampleAudioUrl(
         lang,
       });
     } catch {
-      return youdaoWordUrl(word.word);
+      // Fall through to wordId-based lookup
     }
+  }
+
+  if (word.id.startsWith('mock-')) {
+    return youdaoWordUrl(word.word);
   }
 
   return fetchPronunciationAudioUrl({ wordId: word.id, type: 'example', lang });
