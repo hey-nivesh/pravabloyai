@@ -33,7 +33,7 @@ import { useUserProfile } from '@/hooks/useUserProfile';
 export const DAILY_SESSION_SIZE = 5;
 
 export const API_BASE =
-  process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://pravabloy-ai-backend.onrender.com';
+  process.env.EXPO_PUBLIC_API_BASE_URL ?? 'https://pravabloy-ai-backend-sh4z.onrender.com';
 const CACHE_KEY_PREFIX = 'daily_word_session_v2';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
